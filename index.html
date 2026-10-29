@@ -1,0 +1,3012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>SRM Minigames - Live demo</title>
+<style>
+/* =========================================================================
+   srm-minigames - ox_lib inspired theme (Mantine dark palette)
+   Tokens first; every component below only uses these variables.
+   ========================================================================= */
+:root{
+  --panel:#1a1b1e;          /* modal background            */
+  --input:#25262b;          /* input / card surface        */
+  --input-hover:#2c2e33;
+  --edge:#373a40;           /* borders                     */
+  --text:#c1c2c5;
+  --white:#ffffff;
+  --muted:#909296;          /* descriptions                */
+  --dim:#5c5f66;
+  --blue:#228be6;           /* primary accent              */
+  --cyan:#4dabf7;           /* primary accent, light       */
+  --blue-soft:rgba(34,139,230,.22);
+  --green:#51cf66;
+  --lime:#94d82d;
+  --amber:#fcc419;
+  --red:#fa5252;
+  --sans:Roboto,'Segoe UI',Arial,sans-serif;
+  --radius:4px;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+html,body{ width:100%; height:100%; background:transparent; overflow:hidden; font-family:var(--sans); }
+
+#app{
+  position:fixed; top:0; left:0; right:0; bottom:0;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--sans); color:var(--text);
+}
+#app.hidden{ display:none; }
+
+/* ------------------------------ dialog frame ------------------------------ */
+.frame{
+  width:560px; background:var(--panel); border-radius:var(--radius);
+  box-shadow:0 6px 28px rgba(0,0,0,.55); overflow:hidden;
+  animation:pop .16s ease-out;
+}
+@keyframes pop{ from{ opacity:0; transform:scale(.97); } to{ opacity:1; transform:scale(1); } }
+
+.frame__topline{ position:relative; display:flex; align-items:center; justify-content:center; padding:18px 64px 12px; }
+.frame__title{ font-size:18px; font-weight:500; color:var(--text); text-align:center; }
+.frame__clock{ position:absolute; right:16px; top:20px; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+.frame__timerbar{ height:4px; margin:0 16px; background:var(--input); border-radius:2px; overflow:hidden; }
+.frame__timerfill{ height:100%; width:100%; background:var(--blue); border-radius:2px; transition:width .1s linear; }
+.frame__timerfill.danger{ background:var(--red); }
+
+.stage{
+  position:relative; padding:18px 20px 14px; min-height:240px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+}
+
+.frame__footline{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px 16px; }
+#hintText{ font-size:12px; color:var(--dim); }
+.frame__actions{ display:flex; align-items:center; gap:14px; }
+.lives{ display:flex; gap:5px; }
+.life-pip{ width:8px; height:8px; border-radius:50%; background:var(--dim); }
+.life-pip.on{ background:var(--cyan); }
+.life-pip.off{ background:var(--edge); }
+
+.flash-ok{ animation:flashOk .35s ease; }
+.flash-bad{ animation:flashBad .35s ease; }
+@keyframes flashOk{ 0%{ box-shadow:inset 0 0 0 999px rgba(81,207,102,.14); } 100%{ box-shadow:none; } }
+@keyframes flashBad{ 0%{ box-shadow:inset 0 0 0 999px rgba(250,82,82,.16); } 100%{ box-shadow:none; } }
+
+/* ------------------------------ shared widgets ----------------------------- */
+.hint{ font-size:12px; color:var(--muted); text-align:center; margin-top:2px; max-width:480px; }
+.section-label{ font-size:14px; font-weight:700; color:var(--white); letter-spacing:.2px; text-transform:uppercase; }
+
+.btn{
+  font-family:var(--sans); font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.2px;
+  color:var(--white); background:var(--input); border:1px solid var(--edge); border-radius:var(--radius);
+  height:36px; padding:0 18px; cursor:pointer; transition:background .12s, border-color .12s;
+}
+.btn:hover{ background:var(--input-hover); }
+.btn:active{ transform:translateY(1px); }
+.btn:disabled{ opacity:.45; cursor:default; }
+.btn.primary{ background:var(--blue-soft); border-color:transparent; color:var(--cyan); }
+.btn.primary:hover{ background:rgba(34,139,230,.34); }
+
+/* "input surface": every box that looks like an ox_lib input */
+.card-item,.contra-item,.interro-btn,.drug-opt,.dosage-opt,.airway-step,.evi-card,.vital-card,
+.fp-tile,.mem-tile,.ecg-tile,.triage-patient,.redact-doc,.scene-doc,.dosage-brief,.drug-current,
+.contra-fact,.phist-fact,.interro-intro,.sobriety-svg,.iv-svg,.tri-svg,.spotdiff-photo,
+.bar-track,.defib-gauge,.tune-meter,.code-slot{
+  background:var(--input); border:1px solid var(--edge); border-radius:var(--radius); color:var(--white);
+}
+/* clickable ones get the ox_lib blue focus border on hover */
+.card-item:hover,.contra-item:hover,.interro-btn:hover,.drug-opt:hover,.dosage-opt:hover,.evi-card:hover,
+.vital-card:hover,.fp-tile:hover,.mem-tile:hover,.ecg-tile:hover{ border-color:var(--blue); }
+.card-item.miss-flash,.contra-item.miss-flash,.drug-opt.miss-flash,.dosage-opt.miss-flash,.evi-card.miss-flash,
+.vital-card.miss-flash{ border-color:var(--red); box-shadow:0 0 0 1px var(--red); }
+
+/* ------------------------------- lockpick ---------------------------------- */
+.lock-wrap{ position:relative; width:220px; height:220px; }
+.lock-svg{ position:absolute; top:0; left:0; width:220px; height:220px; }
+
+/* ----------------------- skill bar (police + wound dressing) --------------- */
+.bar-wrap{ width:440px; }
+.bar-track{ position:relative; height:28px; overflow:hidden; }
+.bar-zone{ position:absolute; top:0; bottom:0; background:rgba(34,139,230,.30); border-left:2px solid var(--cyan); border-right:2px solid var(--cyan); }
+.bar-marker{ position:absolute; top:-3px; bottom:-3px; width:4px; background:var(--white); border-radius:2px; box-shadow:0 0 6px rgba(255,255,255,.6); }
+.bar-progress{ display:flex; gap:6px; margin-top:14px; justify-content:center; }
+.bar-pip{ width:36px; height:6px; border-radius:3px; background:var(--edge); }
+.bar-pip.done{ background:var(--green); }
+
+/* --------------------------- hacking (simon says) -------------------------- */
+.simon-grid{ display:grid; grid-template-columns:repeat(2,90px); gap:10px; }
+.simon-btn{ width:90px; height:90px; border-radius:var(--radius); border:1px solid var(--edge); cursor:pointer; opacity:.55; transition:.1s; }
+.simon-btn.lit{ opacity:1; filter:brightness(1.5); box-shadow:0 0 18px currentColor; }
+.simon-btn.c0{ background:#1c7ed6; color:#1c7ed6; }
+.simon-btn.c1{ background:#37b24d; color:#37b24d; }
+.simon-btn.c2{ background:#f76707; color:#f76707; }
+.simon-btn.c3{ background:#ae3ec9; color:#ae3ec9; }
+
+/* -------------------------------- wire cut --------------------------------- */
+.wire-grid{ display:grid; gap:10px; }
+.wire{ width:54px; height:54px; border-radius:var(--radius); cursor:pointer; border:1px solid var(--edge); transition:.1s; }
+.wire:hover{ transform:translateY(-2px); }
+
+/* ------------------------------- code breaker ------------------------------ */
+.code-wrap{ width:380px; }
+.code-row{ display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+.code-slot{ width:36px; height:36px; display:flex; align-items:center; justify-content:center; color:var(--cyan); font-size:16px; font-weight:700; }
+.code-feedback{ display:flex; gap:4px; margin-left:8px; }
+.peg{ width:10px; height:10px; border-radius:50%; }
+.peg.green{ background:var(--green); }
+.peg.yellow{ background:var(--amber); }
+.keypad{ display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-top:14px; }
+.history{ max-height:140px; overflow-y:auto; margin-bottom:10px; }
+
+/* -------------------------------- fingerprint ------------------------------ */
+.fp-target{ width:90px; height:90px; margin:0 auto 14px; border:1px solid var(--blue); border-radius:var(--radius); background:var(--input); }
+.fp-grid{ display:grid; grid-template-columns:repeat(3,70px); gap:10px; }
+.fp-tile{ width:70px; height:70px; cursor:pointer; }
+
+/* -------------------------------- radio tuning ----------------------------- */
+.tune-wrap{ width:380px; text-align:center; }
+.tune-readout{ font-size:32px; font-weight:500; color:var(--cyan); letter-spacing:1px; margin-bottom:6px; font-variant-numeric:tabular-nums; }
+.tune-target{ color:var(--amber); font-size:13px; font-weight:700; margin-bottom:14px; }
+.tune-meter{ height:10px; overflow:hidden; margin-bottom:14px; }
+.tune-meter-fill{ height:100%; background:linear-gradient(90deg,var(--red),var(--amber),var(--green)); width:0%; }
+.tune-slider{ width:100%; accent-color:var(--blue); }
+
+/* ---------------------------------- reaction ------------------------------- */
+.reaction-wrap{ text-align:center; }
+.reaction-key{
+  width:90px; height:90px; border:2px solid var(--blue); border-radius:var(--radius); background:var(--input);
+  display:flex; align-items:center; justify-content:center; font-size:42px; color:var(--cyan); margin:0 auto 16px;
+}
+.reaction-progress{ display:flex; gap:6px; justify-content:center; }
+
+/* ---------------------------------- sobriety ------------------------------- */
+.sobriety-wrap{ width:480px; }
+.sobriety-svg{ width:100%; height:180px; }
+
+/* ------------------------------- evidence board ---------------------------- */
+.evi-grid{ display:grid; gap:10px; width:480px; }
+.evi-card{ padding:12px 10px; font-size:13px; cursor:pointer; text-align:center; transition:.12s; min-height:52px; display:flex; align-items:center; justify-content:center; }
+.evi-card.selected{ border-color:var(--cyan); background:var(--blue-soft); }
+.evi-card.matched{ border-color:var(--green); color:var(--green); opacity:.55; cursor:default; }
+
+/* ----------------- contradiction / patient history (fact + list) ------------ */
+.contra-wrap{ width:480px; }
+.contra-fact,.phist-fact{ font-size:13px; font-weight:500; color:var(--amber); padding:10px 12px; margin-bottom:14px; width:480px; }
+.contra-fact{ width:auto; }
+.contra-list,.card-list{ display:flex; flex-direction:column; gap:8px; width:480px; }
+.contra-item,.card-item{ padding:10px 12px; font-size:13px; cursor:pointer; transition:.12s; }
+
+/* -------------------------------- surveillance ----------------------------- */
+.surv-wrap{ width:420px; text-align:center; }
+.surv-readout{ font-size:13px; font-weight:500; color:var(--cyan); margin-bottom:14px; min-height:18px; }
+.surv-slider{ width:100%; margin-bottom:10px; accent-color:var(--blue); }
+
+/* ------------------------------ spot the difference ------------------------ */
+.spotdiff-wrap{ display:flex; gap:18px; }
+.spotdiff-col{ text-align:center; }
+.spotdiff-label{ font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.4px; margin-bottom:6px; }
+.diff-shape{ cursor:pointer; }
+
+/* ---------------------- redaction / scene safety (word hunt) --------------- */
+.redact-wrap,.scene-wrap{ width:480px; }
+.redact-target,.scene-target{ font-size:13px; font-weight:700; color:var(--white); margin-bottom:10px; }
+.redact-key,.scene-target span{ color:var(--amber); }
+.redact-doc,.scene-doc{ font-size:13px; line-height:1.9; max-height:200px; overflow-y:auto; padding:10px 12px; color:var(--text); }
+.redact-word,.scene-word{ cursor:pointer; padding:1px 2px; border-radius:3px; }
+.redact-word:hover,.scene-word:hover{ background:rgba(77,171,247,.18); }
+.redact-word.found,.scene-word.found{ background:rgba(81,207,102,.25); color:var(--green); text-decoration:line-through; }
+.redact-word.miss-flash,.scene-word.miss-flash{ background:rgba(250,82,82,.30); }
+
+/* -------------------------------- interrogation ---------------------------- */
+.interro-wrap{ width:480px; }
+.interro-intro{ font-size:12px; color:var(--muted); padding:8px 12px; margin-bottom:12px; }
+.interro-prompt{ font-size:14px; font-weight:700; color:var(--white); margin-bottom:10px; }
+.interro-options{ display:flex; flex-direction:column; gap:8px; }
+.interro-btn{ font-family:var(--sans); text-align:left; padding:10px 12px; cursor:pointer; font-size:13px; transition:.12s; }
+.interro-btn.good-flash{ border-color:var(--green); box-shadow:0 0 0 1px var(--green); }
+.interro-btn.bad-flash{ border-color:var(--red); box-shadow:0 0 0 1px var(--red); }
+
+/* -------------------------------- triangulation ---------------------------- */
+.tri-wrap{ text-align:center; }
+.tri-readout{ font-size:12px; color:var(--muted); margin-bottom:10px; line-height:1.6; }
+.tri-cell{ cursor:pointer; transition:.1s; }
+.tri-cell:hover{ fill:rgba(77,171,247,.22) !important; }
+
+/* -------------------------------- memory search ---------------------------- */
+.mem-grid{ display:grid; gap:8px; }
+.mem-tile{ width:56px; height:56px; display:flex; align-items:center; justify-content:center; font-size:24px; cursor:pointer; transition:.12s; }
+.mem-tile.revealed{ background:var(--input-hover); border-color:var(--cyan); }
+.mem-tile.found-correct{ border-color:var(--green); color:var(--green); background:rgba(81,207,102,.15); cursor:default; }
+.mem-tile.found-wrong{ border-color:var(--red); background:rgba(250,82,82,.18); cursor:default; }
+
+/* ------------------------------------ CPR ---------------------------------- */
+.cpr-wrap{ text-align:center; width:440px; }
+.cpr-bpm{ font-size:48px; font-weight:500; color:var(--white); margin-bottom:4px; font-variant-numeric:tabular-nums; }
+.cpr-target{ font-size:12px; color:var(--muted); margin-bottom:14px; }
+.cpr-beat{ width:60px; height:60px; border-radius:50%; border:3px solid var(--blue); margin:0 auto 14px; transition:transform .05s, box-shadow .05s; }
+.cpr-beat.pulse{ transform:scale(1.18); box-shadow:0 0 16px var(--blue); background:var(--blue-soft); }
+.cpr-history{ display:flex; gap:4px; justify-content:center; margin-top:8px; }
+.cpr-pip{ width:8px; height:8px; border-radius:50%; background:var(--edge); }
+.cpr-pip.ok{ background:var(--green); }
+.cpr-pip.miss{ background:var(--red); }
+
+/* ---------------------------------- defib ---------------------------------- */
+.defib-wrap{ text-align:center; width:440px; }
+.defib-gauge{ position:relative; height:30px; overflow:hidden; margin-bottom:10px; }
+.defib-fill{ height:100%; background:linear-gradient(90deg,var(--green),var(--lime),var(--amber),var(--red)); width:0%; opacity:.9; }
+.defib-zone{ position:absolute; top:0; bottom:0; background:rgba(255,255,255,.14); border-left:2px solid var(--white); border-right:2px solid var(--white); }
+.defib-readout{ font-size:32px; font-weight:500; color:var(--amber); margin-bottom:6px; font-variant-numeric:tabular-nums; }
+.defib-label{ font-size:12px; color:var(--muted); margin-bottom:12px; }
+
+/* --------------------------------- vitals ---------------------------------- */
+.vitals-wrap{ width:480px; }
+.vitals-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.vital-card{ padding:12px; cursor:pointer; transition:.12s; }
+.vital-name{ font-size:12px; font-weight:700; color:var(--muted); margin-bottom:4px; }
+.vital-value{ font-size:22px; font-weight:500; color:var(--white); font-variant-numeric:tabular-nums; }
+.vital-unit{ font-size:12px; color:var(--muted); }
+
+/* ---------------------------------- IV line -------------------------------- */
+.iv-wrap{ width:480px; }
+
+/* --------------------------------- dosage ---------------------------------- */
+.dosage-wrap{ width:480px; }
+.dosage-brief{ padding:12px; margin-bottom:12px; font-size:13px; line-height:1.7; color:var(--text); }
+.dosage-brief strong{ color:var(--white); }
+.dosage-formula{ color:var(--muted); font-size:12px; margin-bottom:12px; }
+.dosage-options{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.dosage-opt{ padding:10px; cursor:pointer; text-align:center; font-size:16px; font-weight:500; transition:.12s; }
+
+/* --------------------------------- airway ---------------------------------- */
+.airway-wrap{ width:480px; }
+.airway-steps{ display:flex; flex-direction:column; gap:8px; }
+.airway-step{ display:flex; align-items:center; gap:10px; padding:10px 12px; cursor:grab; font-size:13px; user-select:none; }
+.airway-step.dragging{ opacity:.5; cursor:grabbing; }
+.airway-step .step-num{ color:var(--cyan); min-width:20px; font-size:14px; font-weight:700; }
+.airway-confirm{ margin-top:4px; }
+
+/* --------------------------------- triage ---------------------------------- */
+.triage-wrap{ width:480px; }
+.triage-patient{ padding:12px; font-size:13px; line-height:1.5; }
+.triage-btns{ display:flex; gap:8px; margin-top:10px; }
+.triage-btn{ font-family:var(--sans); font-size:12px; font-weight:700; padding:0 14px; height:32px; border-radius:var(--radius); cursor:pointer; border:1px solid var(--edge); background:var(--input); color:var(--white); transition:.12s; }
+.triage-btn:hover{ background:var(--input-hover); }
+.triage-btn:disabled{ opacity:.4; cursor:default; }
+.triage-btn.t-immediate{ border-color:rgba(250,82,82,.6); color:var(--red); }
+.triage-btn.t-delayed{ border-color:rgba(252,196,25,.6); color:var(--amber); }
+.triage-btn.t-minor{ border-color:rgba(81,207,102,.6); color:var(--green); }
+
+/* ------------------------------- blood pressure ---------------------------- */
+.bp-wrap{ width:440px; text-align:center; }
+.bp-readout{ font-size:36px; font-weight:500; color:var(--white); margin-bottom:4px; font-variant-numeric:tabular-nums; }
+.bp-target{ font-size:13px; font-weight:700; color:var(--amber); margin-bottom:14px; }
+.bp-sliders{ display:flex; flex-direction:column; gap:8px; }
+.bp-row{ display:flex; align-items:center; gap:10px; font-size:12px; }
+.bp-row label{ width:84px; text-align:right; color:var(--muted); font-weight:700; }
+.bp-row input{ flex:1; accent-color:var(--blue); }
+.bp-lock,.o2-lock{ height:6px; background:var(--input); border-radius:3px; margin-top:10px; overflow:hidden; }
+.bp-lock-fill{ height:100%; background:var(--green); width:0%; transition:width .1s; }
+
+/* ----------------------------------- ECG ----------------------------------- */
+.ecg-wrap{ width:480px; text-align:center; }
+.ecg-label{ font-size:12px; color:var(--muted); margin-bottom:6px; }
+.ecg-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.ecg-tile{ cursor:pointer; padding:4px; }
+
+/* ------------------------------- oxygen flow ------------------------------- */
+.o2-wrap{ width:440px; text-align:center; }
+.o2-readout{ font-size:42px; font-weight:500; color:var(--cyan); margin-bottom:2px; font-variant-numeric:tabular-nums; }
+.o2-unit{ font-size:13px; color:var(--muted); margin-bottom:8px; }
+.o2-zone-label{ font-size:12px; font-weight:700; color:var(--green); margin-bottom:10px; }
+.o2-lock{ height:8px; margin:0 0 14px; }
+.o2-lock-fill{ height:100%; background:var(--green); width:0%; }
+.o2-wrap input[type=range]{ accent-color:var(--blue); }
+.o2-danger .o2-readout{ color:var(--red); }
+.o2-danger .o2-lock-fill{ background:var(--red); }
+
+/* ----------------------------- drug interaction ---------------------------- */
+.drug-wrap{ width:480px; }
+.drug-current{ padding:10px 12px; margin-bottom:12px; font-size:13px; }
+.drug-current span{ color:var(--amber); font-weight:700; }
+.drug-options{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.drug-opt{ padding:10px 12px; cursor:pointer; font-size:14px; text-align:center; transition:.12s; }
+
+/* ------------------------------- spinal sequence --------------------------- */
+.spinal-wrap{ width:480px; text-align:center; }
+.spinal-svg{ width:60px; }
+.spinal-zone{ cursor:pointer; transition:.1s; }
+.spinal-zone:hover{ opacity:.8; }
+.spinal-sequence{ display:flex; gap:6px; justify-content:center; margin-bottom:10px; flex-wrap:wrap; }
+.spinal-slot{ width:38px; height:36px; background:var(--input); border:1px solid var(--edge); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:var(--muted); }
+.spinal-slot.filled{ border-color:var(--green); color:var(--green); }
+
+</style>
+<style>
+  html,body{ overflow:auto; }
+  body{ background:#141517; color:var(--text); font-family:var(--sans); }
+  #panel{
+    position:fixed; top:0; left:0; bottom:0; width:300px; overflow-y:auto;
+    background:var(--panel); border-right:1px solid var(--edge); padding:18px 16px;
+  }
+  #panel h2{ font-size:18px; font-weight:500; text-align:center; margin-bottom:4px; }
+  #panel .sub{ font-size:12px; color:var(--muted); text-align:center; margin-bottom:16px; }
+  .field-label{ font-size:14px; font-weight:700; color:var(--white); margin:10px 0 4px; }
+  select{
+    width:100%; height:36px; padding:0 10px; background:var(--input); color:var(--white);
+    border:1px solid var(--edge); border-radius:var(--radius); font-family:var(--sans); font-size:14px;
+  }
+  select:focus{ outline:none; border-color:var(--blue); }
+  .group{ font-size:12px; font-weight:700; letter-spacing:.5px; color:var(--muted); text-transform:uppercase; margin:18px 0 6px; }
+  .game-btn{
+    display:block; width:100%; text-align:left; margin-bottom:5px; height:34px; padding:0 12px;
+    background:var(--input); border:1px solid var(--edge); border-radius:var(--radius);
+    color:var(--white); font-family:var(--sans); font-size:13px; cursor:pointer;
+  }
+  .game-btn:hover{ border-color:var(--blue); }
+  #log{ margin-top:16px; border-top:1px solid var(--edge); padding-top:10px; font-size:12px; color:var(--muted); max-height:240px; overflow-y:auto; }
+  #log div{ margin-bottom:6px; word-break:break-word; }
+  #log .ok{ color:var(--green); }
+  #log .bad{ color:var(--red); }
+  #stageWrap{ margin-left:300px; height:100vh; position:relative; }
+  #stageWrap #app{ position:absolute; }
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <h2>Minigame preview</h2>
+  <div class="sub">Runs the real NUI code in your browser</div>
+
+  <div class="field-label">Difficulty</div>
+  <select id="difficulty">
+    <option value="easy">Easy</option>
+    <option value="medium" selected>Medium</option>
+    <option value="hard">Hard</option>
+  </select>
+
+  <div class="field-label">Language</div>
+  <select id="locale">
+    <option value="en" selected>English</option>
+    <option value="nl">Nederlands</option>
+  </select>
+
+  <div id="games"></div>
+  <div id="log"></div>
+</div>
+
+<div id="stageWrap">
+  <div id="app" class="hidden">
+    <div class="frame">
+      <div class="frame__topline">
+        <span class="frame__title" id="gameLabel">STANDBY</span>
+        <span class="frame__clock" id="gameClock">00:00</span>
+      </div>
+      <div class="frame__timerbar"><div class="frame__timerfill" id="timerFill"></div></div>
+      <div id="stage" class="stage"></div>
+      <div class="frame__footline">
+        <span id="hintText">ESC to abort</span>
+        <span class="frame__actions">
+          <span id="livesText" class="lives"></span>
+          <button id="cancelBtn" class="btn" type="button">Cancel</button>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---- mock of the FiveM NUI bridge (preview only) ----
+  window.GetParentResourceName = () => 'srm-minigames';
+
+  const GAMES = {
+    'Police': [
+      ['lockpick','Lockpick'],['hacking','Hacking'],['wirecut','Wire Cut'],['skillbar','Skill Bar'],
+      ['codebreaker','Code Breaker'],['fingerprint','Fingerprint Match'],['radiotuning','Radio Tuning'],
+      ['reaction','Foot Pursuit Reaction'],['sobriety','Sobriety Test'],['evidenceboard','Evidence Board'],
+      ['contradiction','Witness Statement Review'],['surveillance','Surveillance Footage'],['spotdiff','Photo Comparison'],
+      ['redaction','Document Review'],['interrogation','Suspect Interrogation'],['triangulation','Signal Triangulation'],
+      ['memorysearch','Property Search']
+    ],
+    'Ambulance': [
+      ['cpr','CPR'],['defib','Defibrillator'],['vitals','Vitals Assessment'],['ivline','IV Line'],
+      ['dosage','Medication Dosage'],['airway','Airway Sequence'],['triage','Triage'],['wounddress','Wound Dressing'],
+      ['bloodpressure','Blood Pressure'],['patienthistory','Patient History'],['ecgreading','ECG Reading'],
+      ['oxygenflow','Oxygen Flow'],['druginteract','Drug Interaction'],['scenesafety','Scene Safety'],
+      ['spinalseq','Spinal Immobilisation']
+    ]
+  };
+
+  const gamesEl = document.getElementById('games');
+  Object.entries(GAMES).forEach(([group, list]) => {
+    const h = document.createElement('div'); h.className = 'group'; h.textContent = `${group} (${list.length})`;
+    gamesEl.appendChild(h);
+    list.forEach(([key, name]) => {
+      const b = document.createElement('button');
+      b.className = 'game-btn'; b.textContent = name;
+      b.onclick = () => window.postMessage({
+        action: 'openMinigame',
+        payload: { game: key, difficulty: document.getElementById('difficulty').value, locale: document.getElementById('locale').value }
+      }, '*');
+      gamesEl.appendChild(b);
+    });
+  });
+
+  const log = document.getElementById('log');
+  function addLog(label, data, ok) {
+    const div = document.createElement('div');
+    div.className = ok === true ? 'ok' : ok === false ? 'bad' : '';
+    div.textContent = `[${new Date().toLocaleTimeString()}] ${label} ${JSON.stringify(data)}`;
+    log.prepend(div);
+  }
+  const realFetch = window.fetch.bind(window);
+  window.fetch = (url, opts) => {
+    if (typeof url === 'string' && url.includes('srm-minigames')) {
+      const body = opts && opts.body ? JSON.parse(opts.body) : {};
+      const name = url.split('/').pop();
+      if (name === 'minigameResult') addLog(`${body.game} ->`, body.data, body.success);
+      else if (name === 'minigameCancelled') addLog(`${body.game} -> cancelled`, {}, false);
+      return Promise.resolve(new Response('ok'));
+    }
+    return realFetch(url, opts);
+  };
+</script>
+<script>window.__LOCALE_BUNDLE__ = {"en": {"labels": {"lockpick": "Lockpicking", "hacking": "Bypassing Security", "wirecut": "Disarming Device", "skillbar": "Field Procedure", "codebreaker": "Cracking Code", "fingerprint": "Matching Print", "radiotuning": "Tuning Frequency", "reaction": "Foot Pursuit", "sobriety": "Sobriety Check", "evidenceboard": "Evidence Board", "contradiction": "Witness Statement Review", "surveillance": "Surveillance Footage Review", "spotdiff": "Photo Comparison", "redaction": "Document Review", "interrogation": "Suspect Interrogation", "triangulation": "Signal Triangulation", "memorysearch": "Property Search", "cpr": "CPR", "defib": "Defibrillator", "vitals": "Vitals Assessment", "ivline": "IV Line Insertion", "dosage": "Medication Dosage", "airway": "Airway Sequence", "triage": "Triage", "wounddress": "Wound Dressing", "bloodpressure": "Blood Pressure", "patienthistory": "Patient History", "ecgreading": "ECG Reading", "oxygenflow": "Oxygen Flow", "druginteract": "Drug Interaction", "scenesafety": "Scene Safety", "spinalseq": "Spinal Immobilisation"}, "common": {"esc_to_abort": "ESC to abort", "cancel": "Cancel"}, "lockpick": {"hint": "Press SPACE when the needle is inside the green zone ({{pins}} pins needed)"}, "hacking": {"hint": "Watch the sequence, then repeat it", "watching": "Watch the sequence...", "your_turn": "Your turn - repeat it"}, "wirecut": {"hint": "Cut the ONE wire whose color has no matching pair"}, "skillbar": {"hint": "Press SPACE when the marker is inside the highlighted zone"}, "codebreaker": {"hint": "{{len}}-digit code (0-7) - GREEN = right digit & spot, AMBER = right digit, wrong spot", "enter": "ENTER", "clear": "CLR"}, "fingerprint": {"target_label": "Target print:", "hint": "Click the tile that exactly matches the target print"}, "radiotuning": {"hint": "Hold the needle on target until the lock completes", "target_label": "TARGET: {{value}} MHz"}, "reaction": {"hint": "Press the matching arrow key as fast as it appears"}, "sobriety": {"hint": "Keep your cursor (green ring) on the amber marker as it walks the line"}, "evidenceboard": {"hint": "Click two cards that belong together to link the evidence", "pairs": [["Shell casing at scene", "Registered firearm match"], ["Security footage timestamp", "Suspect's alibi window"], ["Fingerprint on doorknob", "Suspect's print on file"], ["Tire tread at scene", "Tire match at impound lot"], ["Witness: \"red jacket\"", "Suspect's clothing inventory"], ["Phone GPS ping", "Crime scene location"], ["Blood type O-negative", "Suspect's medical record"], ["Torn fabric sample", "Tear in suspect's jacket"], ["Store receipt timestamp", "Suspect's purchase history"], ["Voice recording", "Suspect's voice sample"], ["Paint transfer residue", "Suspect's vehicle color"], ["Muddy boot print", "Suspect's boot tread pattern"]]}, "contradiction": {"fact_prefix": "CASE FACT: ", "hint": "Click the statement that contradicts the established fact", "scenarios": [{"fact": "Security log shows the back door was locked from 9PM to 6AM.", "statements": [{"text": "I saw someone enter through the back door around midnight.", "bad": true}, {"text": "The front door was propped open most of the night.", "bad": false}, {"text": "Staff used the side entrance for deliveries earlier that day.", "bad": false}, {"text": "Nobody reported activity near the building after 9PM.", "bad": false}]}, {"fact": "The suspect's phone records show it was powered off from 2AM to 5AM.", "statements": [{"text": "I tried calling him at 3AM and it went straight to voicemail.", "bad": false}, {"text": "He texted a friend at 3:15AM saying he could not sleep.", "bad": true}, {"text": "Neighbors heard music from his apartment around 1AM.", "bad": false}, {"text": "His car was seen parked outside all night.", "bad": false}]}, {"fact": "CCTV confirms the suspect's car never left the parking garage that night.", "statements": [{"text": "A similar car was spotted three blocks away around 11PM.", "bad": true}, {"text": "He said he stayed in his car listening to the radio.", "bad": false}, {"text": "A guard remembers seeing the car still parked at 1AM.", "bad": false}, {"text": "Garage gate logs show no exits between 10PM and 6AM.", "bad": false}]}, {"fact": "Two witnesses agree the robbery suspect wore a black hoodie and jeans.", "statements": [{"text": "Store clerk recalls the hoodie was black with jeans.", "bad": false}, {"text": "A second witness confirms a dark hoodie and denim pants.", "bad": false}, {"text": "A passerby says the suspect wore a red jacket and shorts.", "bad": true}, {"text": "Footage shows a hooded figure leaving in dark clothing.", "bad": false}]}, {"fact": "Toll records confirm the suspect's vehicle crossed the bridge at 8:45PM.", "statements": [{"text": "He claims he never left his house that evening.", "bad": true}, {"text": "His sister says he called her around 9PM about traffic.", "bad": false}, {"text": "A coworker saw his car near the bridge that night.", "bad": false}, {"text": "His EZ-pass account shows one crossing that day.", "bad": false}]}]}, "surveillance": {"hint": "Scrub the footage, read the frame description, capture when the subject appears ({{attempts}} attempts)", "capture_btn": "CAPTURE FRAME (C)", "subject_desc": "subject visible, partial face toward camera", "fillers": ["static, empty corridor", "parked vehicles, no movement", "janitor passing through", "camera glare, hard to make out", "empty loading dock"], "idle_readout": "FRAME 00:00 — static, empty corridor"}, "spotdiff": {"original": "ORIGINAL", "evidence": "EVIDENCE PHOTO", "hint": "Click the {{count}} circles in the right photo that don't match the original"}, "redaction": {"target_label": "Find every occurrence of:", "hint": "{{count}} occurrences hidden in the report - click each one", "keywords": ["firearm", "warehouse", "passport", "briefcase", "informant", "ledger"], "word_bank": "the officer arrived at scene and noted several items of interest near the entrance a witness reported hearing noise around midnight before leaving the area quickly without giving a full statement to investigators on duty that night patrol units swept the block twice and found nothing unusual aside from a few scattered items left behind by persons unknown to staff working late shift records were checked against logs from earlier in the week to confirm timestamps and movement patterns across the property before concluding the initial review of available evidence"}, "interrogation": {"hint": "Pick the question that keeps pressure on the suspect - wrong approaches cost patience", "cracked": "The suspect breaks down and confesses.", "cases": [{"intro": "Suspect denies being near the warehouse on the night of the break-in.", "rounds": [{"prompt": "Opening approach:", "options": [{"text": "Ask calmly where he was that night.", "good": true}, {"text": "Accuse him immediately of lying.", "good": false}, {"text": "Stay silent and stare him down.", "good": false}]}, {"prompt": "He gives a vague alibi. Next move:", "options": [{"text": "Ask for a specific time and place to verify.", "good": true}, {"text": "Threaten him with a harsher charge.", "good": false}, {"text": "Change the subject entirely.", "good": false}]}, {"prompt": "His alibi has a hole. Next move:", "options": [{"text": "Point out the timestamp that contradicts his story.", "good": true}, {"text": "Demand he confess right now.", "good": false}, {"text": "Apologize and end the interview.", "good": false}]}]}]}, "triangulation": {"hint": "Click the grid cell where all three signal rings overlap"}, "memorysearch": {"hint": "Memorize which tiles hide contraband, then click all of them once they flip back", "icons": ["💊", "🔫", "💰", "📱", "🔪"]}, "cpr": {"hint": "Press SPACE each time the circle pulses to maintain rhythm ({{beats}} beats needed)", "target_label": "Target: {{target}} BPM — press SPACE in rhythm"}, "defib": {"hint": "Charge to the green zone then press SPACE to shock", "zone_label": "TARGET ZONE: {{min}}–{{max}} J"}, "vitals": {"hint": "Click the reading that is outside the normal range", "readings": [{"name": "Heart Rate", "unit": "bpm", "normal": [60, 100], "format": "{v}"}, {"name": "SpO₂", "unit": "%", "normal": [95, 100], "format": "{v}"}, {"name": "Resp. Rate", "unit": "br/min", "normal": [12, 20], "format": "{v}"}, {"name": "Temp.", "unit": "°C", "normal": [36.1, 37.2], "format": "{v:.1f}"}, {"name": "Sys. BP", "unit": "mmHg", "normal": [90, 130], "format": "{v}"}, {"name": "Dia. BP", "unit": "mmHg", "normal": [60, 85], "format": "{v}"}, {"name": "Blood Glucose", "unit": "mmol/L", "normal": [4.0, 7.8], "format": "{v:.1f}"}, {"name": "Pupils", "unit": "", "normal": null, "values": ["Equal, Reactive", "Unequal", "Fixed", "Dilated"], "abnormal": ["Unequal", "Fixed", "Dilated"]}]}, "ivline": {"hint": "Keep the needle tip inside the vein (green corridor) all the way to the end"}, "dosage": {"hint": "Calculate the correct dose and select it", "formula": "Dose (mg) = weight (kg) × dose per kg (mg/kg)", "cases": [{"drug": "Morphine", "perKg": 0.1, "weightRange": [50, 100], "unit": "mg", "decimals": 1}, {"drug": "Epinephrine", "perKg": 0.01, "weightRange": [50, 100], "unit": "mg", "decimals": 2}, {"drug": "Amiodarone", "perKg": 5, "weightRange": [50, 100], "unit": "mg", "decimals": 0}, {"drug": "Adenosine", "perKg": 0.1, "weightRange": [50, 100], "unit": "mg", "decimals": 1}, {"drug": "Atropine", "perKg": 0.02, "weightRange": [50, 100], "unit": "mg", "decimals": 2}]}, "airway": {"hint": "Drag the steps into the correct order then confirm", "confirm_btn": "CONFIRM ORDER", "steps": ["Position patient: head-tilt chin-lift", "Clear airway of visible obstructions", "Insert oropharyngeal airway adjunct", "Apply bag-valve mask and ventilate", "Confirm chest rise and equal breath sounds"]}, "triage": {"hint": "Assign each patient the correct triage category", "categories": {"immediate": "IMMEDIATE", "delayed": "DELAYED", "minor": "MINOR"}, "patients": [{"desc": "68M — unresponsive, no radial pulse, laboured breathing.", "correct": "immediate"}, {"desc": "34F — fractured tibia, alert and stable, in pain.", "correct": "delayed"}, {"desc": "19M — minor laceration to forearm, walking and talking.", "correct": "minor"}, {"desc": "55F — severe chest pain, diaphoretic, BP 80/50.", "correct": "immediate"}, {"desc": "42M — suspected ankle sprain, full GCS.", "correct": "minor"}, {"desc": "29F — GCS 12, head trauma, vomiting, BP dropping.", "correct": "immediate"}, {"desc": "61M — COPD exacerbation, SpO₂ 88%, alert.", "correct": "delayed"}, {"desc": "8F — minor burns to both hands, crying but stable.", "correct": "delayed"}]}, "wounddress": {"hint": "Press SPACE when the marker enters the zone — 3 stages: clean, pack, secure", "stages": ["CLEAN", "PACK", "SECURE"]}, "bloodpressure": {"hint": "Adjust both sliders to match the target reading and hold it", "systolic_label": "Systolic", "diastolic_label": "Diastolic", "target_label": "TARGET: {{sys}}/{{dia}} mmHg"}, "patienthistory": {"fact_prefix": "SUSPECTED DIAGNOSIS: ", "hint": "Click the symptom that does NOT fit this diagnosis", "cases": [{"diagnosis": "ST-Elevation Myocardial Infarction (STEMI)", "symptoms": [{"text": "Crushing central chest pain radiating to left arm.", "bad": false}, {"text": "Diaphoresis and nausea.", "bad": false}, {"text": "ST elevation on 12-lead ECG.", "bad": false}, {"text": "Sharp pain worsening on inspiration and palpation.", "bad": true}]}, {"diagnosis": "Tension Pneumothorax", "symptoms": [{"text": "Absent breath sounds on affected side.", "bad": false}, {"text": "Tracheal deviation away from affected side.", "bad": false}, {"text": "Hypotension and raised JVP.", "bad": false}, {"text": "High SpO₂ with normal respiratory rate.", "bad": true}]}, {"diagnosis": "Hypoglycaemia", "symptoms": [{"text": "Altered mental status and confusion.", "bad": false}, {"text": "Diaphoresis and tremor.", "bad": false}, {"text": "Blood glucose 2.1 mmol/L.", "bad": false}, {"text": "Hyperventilation and deep sighing respirations.", "bad": true}]}, {"diagnosis": "Anaphylaxis", "symptoms": [{"text": "Urticaria and angioedema following bee sting.", "bad": false}, {"text": "Bronchospasm and stridor.", "bad": false}, {"text": "BP 70/40 and tachycardia.", "bad": false}, {"text": "Bradycardia and hypertension.", "bad": true}]}, {"diagnosis": "Stroke (CVA)", "symptoms": [{"text": "Sudden facial droop on the right side.", "bad": false}, {"text": "Left arm weakness and slurred speech.", "bad": false}, {"text": "Sudden severe headache described as 'worst ever'.", "bad": false}, {"text": "Gradual onset of chest tightness over 2 hours.", "bad": true}]}]}, "ecgreading": {"hint": "Select the rhythm strip that matches the description", "rhythms": [{"label": "Normal Sinus Rhythm", "rate": 72, "regular": true, "p": true, "qrs": "narrow", "st": "normal"}, {"label": "Ventricular Fibrillation", "rate": 0, "regular": false, "p": false, "qrs": "chaotic", "st": "none"}, {"label": "Atrial Fibrillation", "rate": 110, "regular": false, "p": false, "qrs": "narrow", "st": "normal"}, {"label": "3rd Degree Heart Block", "rate": 38, "regular": true, "p": true, "qrs": "wide", "st": "normal"}, {"label": "SVT", "rate": 180, "regular": true, "p": false, "qrs": "narrow", "st": "normal"}, {"label": "Sinus Bradycardia", "rate": 44, "regular": true, "p": true, "qrs": "narrow", "st": "normal"}]}, "oxygenflow": {"hint": "Keep the O₂ saturation in the green safe zone", "safe_zone": "Safe zone: 94–98%", "readout_unit": "% SpO₂"}, "druginteract": {"hint": "Select the drug that interacts dangerously with the current medication", "cases": [{"current": "Warfarin", "options": ["Aspirin", "Paracetamol", "Omeprazole", "Vitamin C"], "bad": "Aspirin", "reason": "increases bleeding risk"}, {"current": "MAO Inhibitor (Phenelzine)", "options": ["Metformin", "Pethidine", "Atenolol", "Salbutamol"], "bad": "Pethidine", "reason": "can cause serotonin syndrome"}, {"current": "Digoxin", "options": ["Amoxicillin", "Furosemide", "Ibuprofen", "Omeprazole"], "bad": "Furosemide", "reason": "hypokalaemia increases digoxin toxicity"}, {"current": "Lithium", "options": ["Codeine", "Ibuprofen", "Metoclopramide", "Lactulose"], "bad": "Ibuprofen", "reason": "NSAIDs raise lithium levels to toxic range"}, {"current": "Heparin", "options": ["Paracetamol", "Metoprolol", "Aspirin", "Lansoprazole"], "bad": "Aspirin", "reason": "combined anticoagulation causes serious bleeding"}]}, "scenesafety": {"hint": "{{count}} hazards hidden in the scene report — click each one", "target_label": "Flag every hazard:", "hazards": ["gas leak", "live wire", "unstable structure", "aggressive bystander", "spilled fuel", "sharp debris", "oncoming traffic", "chemical spill"], "word_bank": "units arrived on scene at approximately 0230 hours the vehicle had left the roadway and struck a concrete barrier the engine was still running and passengers were unresponsive a crowd of bystanders had gathered near the wreckage conditions on approach were noted as moderate with some obstruction visibility reduced by smoke the area had not been cordoned off by police at time of arrival scene was assessed and crew began patient contact immediately"}, "spinalseq": {"hint": "Memorize the highlighted injury sites, then click them in order once they disappear", "zones": ["Head/Neck", "Thoracic", "Lumbar", "Pelvis", "Lower Limb"]}, "interactions": {"no_job": "You don't have the right job for this.", "no_item": "You need {{item}} for this.", "cooldown": "You can try this again in {{seconds}}s.", "busy": "You are already busy with something.", "too_far": "You are too far away.", "success": "Done.", "failed": "That didn't work.", "cannot_carry": "You can't carry the reward."}}, "nl": {"labels": {"lockpick": "Slot Openen", "hacking": "Beveiliging Omzeilen", "wirecut": "Apparaat Onschadelijk Maken", "skillbar": "Veldprocedure", "codebreaker": "Code Kraken", "fingerprint": "Vingerafdruk Vergelijken", "radiotuning": "Frequentie Afstemmen", "reaction": "Achtervolging te Voet", "sobriety": "Alcoholcontrole", "evidenceboard": "Bewijsbord", "contradiction": "Getuigenverklaring Controleren", "surveillance": "Beveiligingsbeelden Bekijken", "spotdiff": "Foto Vergelijken", "redaction": "Document Doorzoeken", "interrogation": "Verdachte Verhoren", "triangulation": "Signaal Triangulatie", "memorysearch": "Pand Doorzoeken", "cpr": "Reanimatie (CPR)", "defib": "Defibrillator", "vitals": "Vitale Functies", "ivline": "Infuus Inbrengen", "dosage": "Medicatiedosering", "airway": "Luchtwegbeheer", "triage": "Triage", "wounddress": "Wond Verbinden", "bloodpressure": "Bloeddruk", "patienthistory": "Patiëntanamnese", "ecgreading": "ECG Interpretatie", "oxygenflow": "Zuurstoftoediening", "druginteract": "Geneesmiddeleninteractie", "scenesafety": "Scèneveiligheid", "spinalseq": "Wervelkolom Immobilisatie"}, "common": {"esc_to_abort": "ESC om te annuleren", "cancel": "Annuleren"}, "lockpick": {"hint": "Druk op SPATIE wanneer de naald in de groene zone staat ({{pins}} pinnen nodig)"}, "hacking": {"hint": "Bekijk de reeks en herhaal hem daarna", "watching": "Reeks wordt getoond...", "your_turn": "Jouw beurt - herhaal de reeks"}, "wirecut": {"hint": "Knip de ENE draad waarvan de kleur geen tegenhanger heeft"}, "skillbar": {"hint": "Druk op SPATIE wanneer de marker in de gemarkeerde zone staat"}, "codebreaker": {"hint": "{{len}}-cijferige code (0-7) - GROEN = juist cijfer & juiste plek, GEEL = juist cijfer, verkeerde plek", "enter": "BEVESTIG", "clear": "WISSEN"}, "fingerprint": {"target_label": "Doelafdruk:", "hint": "Klik op de tegel die exact overeenkomt met de doelafdruk"}, "radiotuning": {"hint": "Houd de naald op het doel totdat de vergrendeling voltooid is", "target_label": "DOEL: {{value}} MHz"}, "reaction": {"hint": "Druk zo snel mogelijk op de bijpassende pijltjestoets"}, "sobriety": {"hint": "Houd je cursor (groene ring) op de oranje marker terwijl die de lijn volgt"}, "evidenceboard": {"hint": "Klik twee kaarten aan die bij elkaar horen om het bewijs te koppelen", "pairs": [["Kogelhuls op plaats delict", "Geregistreerd vuurwapen komt overeen"], ["Tijdstempel bewakingscamera", "Alibi-venster van verdachte"], ["Vingerafdruk op deurklink", "Afdruk van verdachte in dossier"], ["Bandenspoor op plaats delict", "Bandenmatch in opslagplaats"], ["Getuige: \"rode jas\"", "Kledinginventaris van verdachte"], ["GPS-locatie telefoon", "Locatie plaats delict"], ["Bloedgroep O-negatief", "Medisch dossier verdachte"], ["Gescheurd stofmonster", "Scheur in jas van verdachte"], ["Tijdstempel kassabon", "Aankoophistorie verdachte"], ["Geluidsopname", "Stemmonster verdachte"], ["Verfoverdracht", "Voertuigkleur verdachte"], ["Modderig schoenspoor", "Profiel schoenzool verdachte"]]}, "contradiction": {"fact_prefix": "VASTGESTELD FEIT: ", "hint": "Klik op de verklaring die het vastgestelde feit tegenspreekt", "scenarios": [{"fact": "Beveiligingslog toont dat de achterdeur van 21:00 tot 06:00 op slot was.", "statements": [{"text": "Ik zag rond middernacht iemand door de achterdeur naar binnen gaan.", "bad": true}, {"text": "De voordeur stond het grootste deel van de nacht open.", "bad": false}, {"text": "Personeel gebruikte eerder die dag de zij-ingang voor leveringen.", "bad": false}, {"text": "Niemand meldde activiteit bij het gebouw na 21:00.", "bad": false}]}, {"fact": "Telefoongegevens tonen dat het toestel van de verdachte van 02:00 tot 05:00 uit stond.", "statements": [{"text": "Ik probeerde hem om 03:00 te bellen en kreeg meteen de voicemail.", "bad": false}, {"text": "Hij sms'te om 03:15 een vriend dat hij niet kon slapen.", "bad": true}, {"text": "Buren hoorden rond 01:00 muziek uit zijn appartement.", "bad": false}, {"text": "Zijn auto stond de hele nacht geparkeerd buiten.", "bad": false}]}, {"fact": "Camerabeelden bevestigen dat de auto van de verdachte die nacht de parkeergarage niet heeft verlaten.", "statements": [{"text": "Een vergelijkbare auto werd rond 23:00 drie straten verderop gezien.", "bad": true}, {"text": "Hij zei dat hij in zijn auto bleef zitten en naar de radio luisterde.", "bad": false}, {"text": "Een bewaker herinnert zich dat de auto om 01:00 nog stond geparkeerd.", "bad": false}, {"text": "De poortlogs van de garage tonen geen uitgangen tussen 22:00 en 06:00.", "bad": false}]}, {"fact": "Twee getuigen zijn het erover eens dat de verdachte van de overval een zwarte hoodie en jeans droeg.", "statements": [{"text": "De winkelbediende herinnert zich een zwarte hoodie met jeans.", "bad": false}, {"text": "Een tweede getuige bevestigt een donkere hoodie en spijkerbroek.", "bad": false}, {"text": "Een voorbijganger zegt dat de verdachte een rode jas en korte broek droeg.", "bad": true}, {"text": "Beelden tonen een figuur met capuchon die in donkere kleding vertrekt.", "bad": false}]}, {"fact": "Tolgegevens bevestigen dat het voertuig van de verdachte om 20:45 de brug overstak.", "statements": [{"text": "Hij beweert dat hij die avond zijn huis niet heeft verlaten.", "bad": true}, {"text": "Zijn zus zegt dat hij haar rond 21:00 belde over file.", "bad": false}, {"text": "Een collega zag zijn auto die avond bij de brug.", "bad": false}, {"text": "Zijn tolaccount toont die dag één overtocht.", "bad": false}]}]}, "surveillance": {"hint": "Spoel de beelden door, lees de framebeschrijving en leg het frame vast zodra de verdachte zichtbaar is ({{attempts}} pogingen)", "capture_btn": "FRAME VASTLEGGEN (C)", "subject_desc": "verdachte zichtbaar, gezicht gedeeltelijk naar camera", "fillers": ["ruis, lege gang", "geparkeerde voertuigen, geen beweging", "conciërge loopt voorbij", "lichtschittering, moeilijk te zien", "lege laad- en losruimte"], "idle_readout": "FRAME 00:00 — ruis, lege gang"}, "spotdiff": {"original": "ORIGINEEL", "evidence": "BEWIJSFOTO", "hint": "Klik de {{count}} cirkels in de rechterfoto aan die niet overeenkomen met het origineel"}, "redaction": {"target_label": "Zoek elke vermelding van:", "hint": "{{count}} vermeldingen verborgen in het rapport - klik ze allemaal aan", "keywords": ["vuurwapen", "pakhuis", "paspoort", "aktetas", "informant", "kasboek"], "word_bank": "de agent kwam ter plaatse en merkte verschillende opvallende zaken op nabij de ingang een getuige meldde geluid te hebben gehoord rond middernacht voordat hij het gebied snel verliet zonder een volledige verklaring af te leggen aan de rechercheurs die dienst hadden die nacht surveillanceploegen doorzochten het blok tweemaal en vonden niets ongewoons afgezien van enkele verspreide voorwerpen achtergelaten door onbekenden bij het personeel dat laat werkte dossiers werden gecontroleerd aan de hand van logboeken van eerder die week om tijdstempels en bewegingspatronen op het terrein te bevestigen voordat het eerste onderzoek van het beschikbare bewijs werd afgesloten"}, "interrogation": {"hint": "Kies de vraag die de druk op de verdachte hoog houdt - verkeerde aanpakken kosten geduld", "cracked": "De verdachte breekt en bekent.", "cases": [{"intro": "Verdachte ontkent in de buurt van het pakhuis te zijn geweest op de nacht van de inbraak.", "rounds": [{"prompt": "Openingsaanpak:", "options": [{"text": "Vraag rustig waar hij die nacht was.", "good": true}, {"text": "Beschuldig hem direct van liegen.", "good": false}, {"text": "Blijf stil en staar hem aan.", "good": false}]}, {"prompt": "Hij geeft een vaag alibi. Volgende zet:", "options": [{"text": "Vraag om een specifieke tijd en plaats ter verificatie.", "good": true}, {"text": "Dreig met een zwaardere aanklacht.", "good": false}, {"text": "Verander volledig van onderwerp.", "good": false}]}, {"prompt": "Zijn alibi vertoont een gat. Volgende zet:", "options": [{"text": "Wijs op het tijdstempel dat zijn verhaal tegenspreekt.", "good": true}, {"text": "Eis dat hij nu meteen bekent.", "good": false}, {"text": "Verontschuldig je en beëindig het verhoor.", "good": false}]}]}]}, "triangulation": {"hint": "Klik op het rastervak waar alle drie de signaalringen elkaar overlappen"}, "memorysearch": {"hint": "Onthoud welke tegels contrabande verbergen en klik ze allemaal aan zodra ze omdraaien", "icons": ["💊", "🔫", "💰", "📱", "🔪"]}, "cpr": {"hint": "Druk op SPATIE elke keer dat de cirkel pulseert om het ritme te behouden ({{beats}} slagen nodig)", "target_label": "Doel: {{target}} slagen/min — druk op SPATIE in het ritme"}, "defib": {"hint": "Laad op naar de groene zone en druk daarna op SPATIE om te defibrilleren", "zone_label": "DOELZONE: {{min}}–{{max}} J"}, "vitals": {"hint": "Klik op de meting die buiten het normale bereik valt", "readings": [{"name": "Hartslag", "unit": "slagen/min", "normal": [60, 100], "format": "{v}"}, {"name": "SpO₂", "unit": "%", "normal": [95, 100], "format": "{v}"}, {"name": "Ademhalingsfreq.", "unit": "ad/min", "normal": [12, 20], "format": "{v}"}, {"name": "Temp.", "unit": "°C", "normal": [36.1, 37.2], "format": "{v:.1f}"}, {"name": "Sys. BD", "unit": "mmHg", "normal": [90, 130], "format": "{v}"}, {"name": "Dia. BD", "unit": "mmHg", "normal": [60, 85], "format": "{v}"}, {"name": "Bloedglucose", "unit": "mmol/L", "normal": [4.0, 7.8], "format": "{v:.1f}"}, {"name": "Pupillen", "unit": "", "normal": null, "values": ["Gelijk, Reagerend", "Ongelijk", "Gefixeerd", "Verwijd"], "abnormal": ["Ongelijk", "Gefixeerd", "Verwijd"]}]}, "ivline": {"hint": "Houd de naaldpunt binnenin de ader (groene strook) tot het einde"}, "dosage": {"hint": "Bereken de juiste dosis en selecteer hem", "formula": "Dosis (mg) = gewicht (kg) × dosis per kg (mg/kg)", "cases": [{"drug": "Morfine", "perKg": 0.1, "weightRange": [50, 100], "unit": "mg", "decimals": 1}, {"drug": "Epinefrine", "perKg": 0.01, "weightRange": [50, 100], "unit": "mg", "decimals": 2}, {"drug": "Amiodaron", "perKg": 5, "weightRange": [50, 100], "unit": "mg", "decimals": 0}, {"drug": "Adenosine", "perKg": 0.1, "weightRange": [50, 100], "unit": "mg", "decimals": 1}, {"drug": "Atropine", "perKg": 0.02, "weightRange": [50, 100], "unit": "mg", "decimals": 2}]}, "airway": {"hint": "Sleep de stappen naar de juiste volgorde en bevestig", "confirm_btn": "VOLGORDE BEVESTIGEN", "steps": ["Patiënt positioneren: hoofd-kanteling kin-lift", "Luchtweg vrijmaken van zichtbare obstructies", "Orofaryngeale luchtweg inbrengen", "Beademingsballon aansluiten en ventileren", "Borstkasdeling en gelijke ademgeluiden bevestigen"]}, "triage": {"hint": "Wijs elke patiënt de juiste triagecategorie toe", "categories": {"immediate": "ONMIDDELLIJK", "delayed": "UITGESTELD", "minor": "LICHT"}, "patients": [{"desc": "68M — bewusteloos, geen radiale pols, moeizame ademhaling.", "correct": "immediate"}, {"desc": "34V — gebroken scheenbeen, alert en stabiel, pijn.", "correct": "delayed"}, {"desc": "19M — kleine snijwond aan onderarm, loopt en praat.", "correct": "minor"}, {"desc": "55V — ernstige pijn op de borst, zwetend, BD 80/50.", "correct": "immediate"}, {"desc": "42M — vermoedelijke enkelverzwikking, volledig GCS.", "correct": "minor"}, {"desc": "29V — GCS 12, hoofdtrauma, braken, BD daalt.", "correct": "immediate"}, {"desc": "61M — COPD-exacerbatie, SpO₂ 88%, alert.", "correct": "delayed"}, {"desc": "8V — lichte brandwonden aan beide handen, huilt maar stabiel.", "correct": "delayed"}]}, "wounddress": {"hint": "Druk op SPATIE wanneer de marker in de zone zit — 3 fasen: reinigen, tamponneren, fixeren", "stages": ["REINIGEN", "TAMPONNEREN", "FIXEREN"]}, "bloodpressure": {"hint": "Stel beide schuifregelaars in op de doelwaarde en houd ze vast", "systolic_label": "Systolisch", "diastolic_label": "Diastolisch", "target_label": "DOEL: {{sys}}/{{dia}} mmHg"}, "patienthistory": {"fact_prefix": "VERMOEDELIJKE DIAGNOSE: ", "hint": "Klik op het symptoom dat NIET past bij deze diagnose", "cases": [{"diagnosis": "ST-Elevatie Myocardinfarct (STEMI)", "symptoms": [{"text": "Drukkende pijn midden op de borst, uitstralend naar linkerarm.", "bad": false}, {"text": "Zweten en misselijkheid.", "bad": false}, {"text": "ST-elevatie op 12-kanaals ECG.", "bad": false}, {"text": "Scherpe pijn die erger wordt bij inademen en palpatie.", "bad": true}]}, {"diagnosis": "Spanningspneumothorax", "symptoms": [{"text": "Afwezige ademgeluiden aan de aangedane zijde.", "bad": false}, {"text": "Tracheadeviatie weg van de aangedane zijde.", "bad": false}, {"text": "Hypotensie en verhoogde CVD.", "bad": false}, {"text": "Hoge SpO₂ met normale ademhalingsfrequentie.", "bad": true}]}, {"diagnosis": "Hypoglykemie", "symptoms": [{"text": "Veranderd bewustzijn en verwardheid.", "bad": false}, {"text": "Zweten en tremor.", "bad": false}, {"text": "Bloedglucose 2,1 mmol/L.", "bad": false}, {"text": "Hyperventilatie en diepe zuchtende ademhaling.", "bad": true}]}, {"diagnosis": "Anafylaxie", "symptoms": [{"text": "Urticaria en angio-oedeem na bijensteel.", "bad": false}, {"text": "Bronchospasme en stridor.", "bad": false}, {"text": "BD 70/40 en tachycardie.", "bad": false}, {"text": "Bradycardie en hypertensie.", "bad": true}]}, {"diagnosis": "CVA (Beroerte)", "symptoms": [{"text": "Plotselinge aangezichtsverlamming rechts.", "bad": false}, {"text": "Zwakte linkerarm en onduidelijke spraak.", "bad": false}, {"text": "Plotselinge hevige hoofdpijn, omschreven als 'ergste ooit'.", "bad": false}, {"text": "Geleidelijk optredend drukkend gevoel op de borst gedurende 2 uur.", "bad": true}]}]}, "ecgreading": {"hint": "Selecteer het ritmogram dat overeenkomt met de beschrijving", "rhythms": [{"label": "Normaal Sinusritme", "rate": 72, "regular": true, "p": true, "qrs": "narrow", "st": "normal"}, {"label": "Ventrikelfibrilleren", "rate": 0, "regular": false, "p": false, "qrs": "chaotic", "st": "none"}, {"label": "Atriumfibrilleren", "rate": 110, "regular": false, "p": false, "qrs": "narrow", "st": "normal"}, {"label": "Totaal AV-blok (3e graads)", "rate": 38, "regular": true, "p": true, "qrs": "wide", "st": "normal"}, {"label": "SVT", "rate": 180, "regular": true, "p": false, "qrs": "narrow", "st": "normal"}, {"label": "Sinusbradycardie", "rate": 44, "regular": true, "p": true, "qrs": "narrow", "st": "normal"}]}, "oxygenflow": {"hint": "Houd de zuurstofverzadiging in de groene veilige zone", "safe_zone": "Veilige zone: 94–98%", "readout_unit": "% SpO₂"}, "druginteract": {"hint": "Selecteer het geneesmiddel dat gevaarlijk interageert met de huidige medicatie", "cases": [{"current": "Warfarine", "options": ["Aspirine", "Paracetamol", "Omeprazol", "Vitamine C"], "bad": "Aspirine", "reason": "verhoogt bloedingsrisico"}, {"current": "MAO-remmer (Fenelzine)", "options": ["Metformine", "Pethidine", "Atenolol", "Salbutamol"], "bad": "Pethidine", "reason": "kan serotoninesyndroom veroorzaken"}, {"current": "Digoxine", "options": ["Amoxicilline", "Furosemide", "Ibuprofen", "Omeprazol"], "bad": "Furosemide", "reason": "hypokaliëmie verhoogt digoxine-toxiciteit"}, {"current": "Lithium", "options": ["Codeïne", "Ibuprofen", "Metoclopramide", "Lactulose"], "bad": "Ibuprofen", "reason": "NSAID's brengen lithiumspiegel in toxisch bereik"}, {"current": "Heparine", "options": ["Paracetamol", "Metoprolol", "Aspirine", "Lansoprazol"], "bad": "Aspirine", "reason": "gecombineerde antistolling veroorzaakt ernstige bloeding"}]}, "scenesafety": {"hint": "{{count}} gevaren verborgen in het scènerapport — klik ze allemaal aan", "target_label": "Markeer elk gevaar:", "hazards": ["gaslek", "stroomdraad", "instabiele constructie", "agressieve omstander", "gemorste brandstof", "scherp puin", "tegemoetkomend verkeer", "chemische lekkage"], "word_bank": "eenheden kwamen ter plaatse om ongeveer 02:30 uur het voertuig was van de weg geraakt en had een betonnen vangrail geraakt de motor liep nog en inzittenden waren bewusteloos een groep omstanders had zich verzameld bij het wrak de omstandigheden bij nadering waren matig met enige belemmering zichtbaarheid verminderd door rook het gebied was op het moment van aankomst niet afgezet door de politie de scène werd beoordeeld en de bemanning begon onmiddellijk met patiëntcontact"}, "spinalseq": {"hint": "Onthoud de gemarkeerde letselzones en klik ze in volgorde aan zodra ze verdwijnen", "zones": ["Hoofd/Nek", "Thoracaal", "Lumbaal", "Bekken", "Onderste ledematen"]}, "interactions": {"no_job": "Je hebt de juiste baan hier niet voor.", "no_item": "Je hebt {{item}} hiervoor nodig.", "cooldown": "Je kunt dit over {{seconds}}s opnieuw proberen.", "busy": "Je bent al met iets bezig.", "too_far": "Je staat te ver weg.", "success": "Gelukt.", "failed": "Dat is niet gelukt.", "cannot_carry": "Je kunt de beloning niet dragen."}}};</script>
+<script>
+/* =========================================================================
+   srm-minigames - html/js/core.js
+   Shared helpers, i18n, NUI bridge and the game registry.
+   Game builders live in games-police.js / games-ambulance.js (loaded after this file).
+   ========================================================================= */
+
+const app        = document.getElementById('app');
+const stage      = document.getElementById('stage');
+const gameLabel  = document.getElementById('gameLabel');
+const gameClock  = document.getElementById('gameClock');
+const timerFill  = document.getElementById('timerFill');
+const hintText   = document.getElementById('hintText');
+const livesText  = document.getElementById('livesText');
+const cancelBtn  = document.getElementById('cancelBtn');
+
+let current = null; // { game, difficulty, timeLimit, cleanup, timerHandle }
+
+const DEFAULT_TIME = {
+  lockpick:      { easy: 14000, medium: 11000, hard: 8000 },
+  hacking:       { easy: 20000, medium: 16000, hard: 12000 },
+  wirecut:       { easy: 12000, medium: 9000,  hard: 6500 },
+  skillbar:      { easy: 16000, medium: 12000, hard: 9000 },
+  codebreaker:   { easy: 60000, medium: 45000, hard: 35000 },
+  fingerprint:   { easy: 12000, medium: 9000,  hard: 6500 },
+  radiotuning:   { easy: 14000, medium: 10000, hard: 7000 },
+  reaction:      { easy: 18000, medium: 14000, hard: 10000 },
+  sobriety:      { easy: 14000, medium: 11000, hard: 8500 },
+  evidenceboard: { easy: 30000, medium: 24000, hard: 18000 },
+  contradiction: { easy: 22000, medium: 16000, hard: 12000 },
+  surveillance:  { easy: 20000, medium: 15000, hard: 11000 },
+  spotdiff:      { easy: 26000, medium: 19000, hard: 14000 },
+  redaction:     { easy: 32000, medium: 24000, hard: 17000 },
+  interrogation: { easy: 40000, medium: 30000, hard: 22000 },
+  triangulation: { easy: 24000, medium: 18000, hard: 13000 },
+  memorysearch:  { easy: 26000, medium: 20000, hard: 15000 },
+  cpr:           { easy: 20000, medium: 16000, hard: 12000 },
+  defib:         { easy: 14000, medium: 11000, hard: 8000  },
+  vitals:        { easy: 14000, medium: 10000, hard: 7000  },
+  ivline:        { easy: 16000, medium: 12000, hard: 9000  },
+  dosage:        { easy: 22000, medium: 16000, hard: 11000 },
+  airway:        { easy: 26000, medium: 20000, hard: 15000 },
+  triage:        { easy: 40000, medium: 30000, hard: 22000 },
+  wounddress:    { easy: 16000, medium: 12000, hard: 9000  },
+  bloodpressure: { easy: 18000, medium: 13000, hard: 9000  },
+  patienthistory:{ easy: 22000, medium: 16000, hard: 12000 },
+  ecgreading:    { easy: 14000, medium: 10000, hard: 7000  },
+  oxygenflow:    { easy: 18000, medium: 14000, hard: 10000 },
+  druginteract:  { easy: 18000, medium: 14000, hard: 10000 },
+  scenesafety:   { easy: 30000, medium: 22000, hard: 16000 },
+  spinalseq:     { easy: 22000, medium: 16000, hard: 11000 },
+};
+
+/* ------------------------------- helpers -------------------------------- */
+function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+function rand(a, b){ return Math.random() * (b - a) + a; }
+function randInt(a, b){ return Math.floor(rand(a, b + 1)); }
+function pick(arr){ return arr[randInt(0, arr.length - 1)]; }
+function shuffle(arr){ const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = randInt(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function sleep(ms){ return new Promise((res) => setTimeout(res, ms)); }
+
+/* ----------------------------------- i18n ------------------------------------
+   Strings live in html/locales/<code>.json.
+   Lookup order for each key: active locale -> English -> the key itself.
+   (window.__LOCALE_BUNDLE__ is only injected by dev/preview.html so the preview
+   works from file://; it is never present in-game.)
+   ----------------------------------------------------------------------- */
+const BUNDLE = window.__LOCALE_BUNDLE__ || {};
+let LOCALE = BUNDLE.en || {};
+let localeReady = Promise.resolve();
+
+function deepMerge(base, extra) {
+  if (typeof extra !== 'object' || extra === null) return base;
+  const out = Array.isArray(base) ? [...base] : { ...base };
+  for (const key of Object.keys(extra)) {
+    if (extra[key] && typeof extra[key] === 'object' && !Array.isArray(extra[key]) &&
+        base[key] && typeof base[key] === 'object' && !Array.isArray(base[key])) {
+      out[key] = deepMerge(base[key], extra[key]);
+    } else {
+      out[key] = extra[key];
+    }
+  }
+  return out;
+}
+
+function loadLocale(code) {
+  code = code || 'en';
+  const request = (typeof fetch === 'function')
+    ? fetch(`locales/${code}.json`).then((r) => { if (!r.ok) throw new Error('locale ' + code); return r.json(); })
+    : Promise.reject(new Error('no fetch'));
+  localeReady = request
+    .catch(() => BUNDLE[code] || BUNDLE.en || {})
+    .then((data) => { LOCALE = deepMerge(BUNDLE.en || {}, data); });
+  return localeReady;
+}
+
+function t(path, vars) {
+  const lookupIn = (table) => path.split('.').reduce((acc, k) => (acc && acc[k] !== undefined ? acc[k] : undefined), table);
+  let str = lookupIn(LOCALE);
+  if (str === undefined) str = lookupIn(BUNDLE.en || {});
+  if (str === undefined) return path;
+  if (typeof str === 'string' && vars) {
+    Object.keys(vars).forEach((k) => { str = str.replace(new RegExp(`{{${k}}}`, 'g'), vars[k]); });
+  }
+  return str;
+}
+function tLabel(game) { return (LOCALE.labels && LOCALE.labels[game]) || game; }
+
+/* ----------------------------- NUI plumbing ----------------------------- */
+// Capture FiveM's native function BEFORE anything can shadow it.
+const NATIVE_RESOURCE_NAME = window.GetParentResourceName;
+function resourceName() {
+  try { return typeof NATIVE_RESOURCE_NAME === 'function' ? NATIVE_RESOURCE_NAME() : 'srm-minigames'; }
+  catch (e) { return 'srm-minigames'; }
+}
+
+function postNui(name, data) {
+  fetch(`https://${resourceName()}/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify(data || {})
+  }).catch(() => {});
+}
+
+window.addEventListener('message', (event) => {
+  const msg = event.data || {};
+  if (msg.action === 'openMinigame') openMinigame(msg.payload);
+  else if (msg.action === 'closeMinigame') teardown();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelCurrent(); });
+cancelBtn.addEventListener('click', () => cancelCurrent());
+
+function cancelCurrent() {
+  if (!current) return;
+  postNui('minigameCancelled', { game: current.game });
+  teardown();
+}
+
+function finish(success, data) {
+  if (!current) return;
+  flashResult(success);
+  const game = current.game;
+  postNui('minigameResult', { game, success, data: data || {} });
+  teardown();
+}
+
+function flashResult(ok) {
+  stage.classList.remove('flash-ok', 'flash-bad');
+  void stage.offsetWidth; // restart the animation on rapid repeats
+  stage.classList.add(ok ? 'flash-ok' : 'flash-bad');
+}
+
+function teardown() {
+  if (current && current.cleanup) current.cleanup();
+  if (current && current.timerHandle) clearInterval(current.timerHandle);
+  current = null;
+  stage.innerHTML = '';
+  app.classList.add('hidden');
+}
+
+function setLives(total, remaining) {
+  livesText.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const pip = document.createElement('span');
+    pip.className = 'life-pip ' + (i < remaining ? 'on' : 'off');
+    livesText.appendChild(pip);
+  }
+}
+
+function startTimer(durationMs, onExpire) {
+  const start = Date.now();
+  const tick = () => {
+    const remaining = Math.max(0, durationMs - (Date.now() - start));
+    const pct = (remaining / durationMs) * 100;
+    timerFill.style.width = pct + '%';
+    timerFill.classList.toggle('danger', pct < 25);
+    const secs = Math.ceil(remaining / 1000);
+    gameClock.textContent = `00:${secs.toString().padStart(2, '0')}`;
+    if (remaining <= 0) { clearInterval(current.timerHandle); onExpire(); }
+  };
+  tick();
+  current.timerHandle = setInterval(tick, 100);
+}
+
+/* ------------------------------ entry point ------------------------------ */
+function openMinigame(payload) {
+  teardown();
+  app.classList.remove('hidden');
+  stage.innerHTML = '';
+  timerFill.classList.remove('danger');
+  timerFill.style.width = '100%';
+  livesText.innerHTML = '';
+
+  const game = payload.game;
+  const difficulty = payload.difficulty || 'medium';
+  const timeLimit = payload.timeLimit || (DEFAULT_TIME[game] ? DEFAULT_TIME[game][difficulty] : 15000);
+
+  current = { game, difficulty, timeLimit, cleanup: null, timerHandle: null };
+
+  const builders = {
+    // police
+    lockpick: buildLockpick, hacking: buildHacking, wirecut: buildWirecut, skillbar: buildSkillbar,
+    codebreaker: buildCodebreaker, fingerprint: buildFingerprint, radiotuning: buildRadioTuning,
+    reaction: buildReaction, sobriety: buildSobriety, evidenceboard: buildEvidenceBoard,
+    contradiction: buildContradiction, surveillance: buildSurveillance, spotdiff: buildSpotDiff,
+    redaction: buildRedaction, interrogation: buildInterrogation, triangulation: buildTriangulation,
+    memorysearch: buildMemorySearch,
+    // ambulance
+    cpr: buildCPR, defib: buildDefib, vitals: buildVitals, ivline: buildIVLine, dosage: buildDosage,
+    airway: buildAirway, triage: buildTriage, wounddress: buildWoundDress, bloodpressure: buildBloodPressure,
+    patienthistory: buildPatientHistory, ecgreading: buildECGReading, oxygenflow: buildOxygenFlow,
+    druginteract: buildDrugInteract, scenesafety: buildSceneSafety, spinalseq: buildSpinalSeq,
+  };
+
+  const builder = builders[game];
+  if (!builder) { finish(false, { reason: 'no_builder' }); return; }
+
+  // Load the locale first so every t()/tLabel() inside the builder is already localized.
+  loadLocale(payload.locale).then(() => {
+    if (!current || current.game !== game) return; // a newer minigame opened meanwhile
+    hintText.textContent = t('common.esc_to_abort');
+    cancelBtn.textContent = t('common.cancel');
+    gameLabel.textContent = payload.label || tLabel(game);
+    builder(difficulty, timeLimit);
+  });
+}
+
+</script>
+<script>
+/* =========================================================================
+   srm-minigames - html/js/games-police.js
+   Police minigames (17). Each build* function receives (difficulty, timeLimit).
+   ========================================================================= */
+
+/* =========================================================================
+   1) LOCKPICK - rotating needle, hit the sweet-spot arc
+   The needle and the zone are both drawn inside the SAME <svg> using the
+   SAME angle->point function, so there is no possibility of the visual
+   needle and the hit-test angle drifting out of sync with each other.
+   0deg = 12 o'clock, increasing clockwise.
+   ========================================================================= */
+function buildLockpick(difficulty, timeLimit) {
+  const pinsNeeded = { easy: 2, medium: 3, hard: 4 }[difficulty];
+  const speed = { easy: 1.4, medium: 2.0, hard: 2.8 }[difficulty]; // degrees per tick
+  let hits = 0, misses = 0;
+  const maxMisses = 3;
+  setLives(maxMisses, maxMisses - misses);
+
+  const cx = 110, cy = 110, zoneR1 = 64, zoneR2 = 100, needleLen = 92;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'lock-wrap';
+  wrap.innerHTML = `
+    <svg class="lock-svg" viewBox="0 0 220 220" preserveAspectRatio="xMidYMid meet">
+      <circle cx="${cx}" cy="${cy}" r="106" fill="none" stroke="#373a40" stroke-width="6"/>
+      <path id="zoneArc" fill="rgba(81,207,102,0.35)" stroke="#51cf66" stroke-width="2"/>
+      <line id="needleLine" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - needleLen}"
+            stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${cy}" r="7" fill="#4dabf7"/>
+    </svg>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('lockpick.hint', { pins: pinsNeeded });
+  stage.appendChild(hint);
+
+  const needleLine = wrap.querySelector('#needleLine');
+  const arcEl = wrap.querySelector('#zoneArc');
+
+  let angle = 0; // current needle angle, 0 = top, clockwise
+  let zoneStart = rand(0, 360);
+  let zoneSize = { easy: 50, medium: 36, hard: 26 }[difficulty];
+
+  function toRad(d) { return (d - 90) * Math.PI / 180; }
+  function pointAt(r, deg) {
+    const a = toRad(deg);
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  }
+
+  function drawZone() {
+    const [x1, y1] = pointAt(zoneR1, zoneStart);
+    const [x2, y2] = pointAt(zoneR1, zoneStart + zoneSize);
+    const [x3, y3] = pointAt(zoneR2, zoneStart + zoneSize);
+    const [x4, y4] = pointAt(zoneR2, zoneStart);
+    arcEl.setAttribute('d', `M ${x1} ${y1} A ${zoneR1} ${zoneR1} 0 0 1 ${x2} ${y2} L ${x3} ${y3} A ${zoneR2} ${zoneR2} 0 0 0 ${x4} ${y4} Z`);
+  }
+
+  function newZone() {
+    zoneStart = rand(0, 360);
+    drawZone();
+  }
+  drawZone();
+
+  function drawNeedle() {
+    const [nx, ny] = pointAt(needleLen, angle);
+    needleLine.setAttribute('x2', nx);
+    needleLine.setAttribute('y2', ny);
+  }
+
+  let raf;
+  function loop() {
+    angle = (angle + speed) % 360;
+    drawNeedle();
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+
+  function inZone() {
+    const diff = ((angle - zoneStart) + 360) % 360;
+    return diff <= zoneSize;
+  }
+
+  function onKey(e) {
+    if (e.code !== 'Space') return;
+    e.preventDefault();
+    if (inZone()) {
+      hits++;
+      flashResult(true);
+      if (hits >= pinsNeeded) {
+        finish(true, { pins: hits });
+        return;
+      }
+      newZone();
+    } else {
+      misses++;
+      flashResult(false);
+      setLives(maxMisses, maxMisses - misses);
+      if (misses >= maxMisses) {
+        finish(false, { reason: 'too_many_misses' });
+        return;
+      }
+    }
+  }
+  window.addEventListener('keydown', onKey);
+
+  current.cleanup = () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', onKey); };
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   2) HACKING - Simon Says color sequence
+   ========================================================================= */
+function buildHacking(difficulty, timeLimit) {
+  const seqLen = { easy: 4, medium: 6, hard: 8 }[difficulty];
+  const colors = ['c0', 'c1', 'c2', 'c3'];
+  const sequence = Array.from({ length: seqLen }, () => randInt(0, 3));
+  let playerIndex = 0;
+  let accepting = false;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'simon-grid';
+  colors.forEach((c, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'simon-btn ' + c;
+    btn.dataset.i = i;
+    wrap.appendChild(btn);
+  });
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('hacking.hint');
+  stage.appendChild(hint);
+
+  const btns = [...wrap.children];
+
+  function lit(i, on) { btns[i].classList.toggle('lit', on); }
+
+  async function playback() {
+    accepting = false;
+    hint.textContent = t('hacking.watching');
+    await sleep(500);
+    for (const i of sequence) {
+      lit(i, true);
+      await sleep(350);
+      lit(i, false);
+      await sleep(150);
+    }
+    hint.textContent = t('hacking.your_turn');
+    accepting = true;
+  }
+
+  function onClick(e) {
+    if (!accepting) return;
+    const btn = e.target.closest('.simon-btn');
+    if (!btn) return;
+    const i = Number(btn.dataset.i);
+    lit(i, true);
+    setTimeout(() => lit(i, false), 150);
+
+    if (i !== sequence[playerIndex]) {
+      finish(false, { reason: 'wrong_sequence', progress: playerIndex });
+      return;
+    }
+    playerIndex++;
+    if (playerIndex >= sequence.length) {
+      finish(true, { length: sequence.length });
+    }
+  }
+  wrap.addEventListener('click', onClick);
+  current.cleanup = () => wrap.removeEventListener('click', onClick);
+
+  playback();
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+
+/* =========================================================================
+   3) WIRE CUT - find the odd-colored wire among pairs
+   ========================================================================= */
+function buildWirecut(difficulty, timeLimit) {
+  const gridSize = { easy: 4, medium: 6, hard: 9 }[difficulty]; // must stay odd-friendly
+  const palette = ['#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#1abc9c', '#e67e22', '#ecf0f1', '#f783ac'];
+
+  // build pairs + 1 unique
+  const total = gridSize % 2 === 0 ? gridSize + 1 : gridSize;
+  const pairCount = (total - 1) / 2;
+  const usedColors = shuffle(palette).slice(0, pairCount + 1);
+  const uniqueColor = usedColors[pairCount];
+  let cells = [];
+  for (let i = 0; i < pairCount; i++) { cells.push(usedColors[i]); cells.push(usedColors[i]); }
+  cells.push(uniqueColor);
+  cells = shuffle(cells);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'wire-grid';
+  const cols = Math.ceil(Math.sqrt(cells.length));
+  wrap.style.gridTemplateColumns = `repeat(${cols}, 54px)`;
+  cells.forEach((color) => {
+    const w = document.createElement('div');
+    w.className = 'wire';
+    w.style.background = color;
+    w.dataset.color = color;
+    wrap.appendChild(w);
+  });
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('wirecut.hint');
+  stage.appendChild(hint);
+
+  function onClick(e) {
+    const w = e.target.closest('.wire');
+    if (!w) return;
+    if (w.dataset.color === uniqueColor) {
+      finish(true, {});
+    } else {
+      finish(false, { reason: 'wrong_wire' });
+    }
+  }
+  wrap.addEventListener('click', onClick);
+  current.cleanup = () => wrap.removeEventListener('click', onClick);
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+
+/* =========================================================================
+   4) SKILLBAR - classic moving-marker / hit-the-zone bar (multi-stage)
+   ========================================================================= */
+function buildSkillbar(difficulty, timeLimit) {
+  const stages = { easy: 2, medium: 3, hard: 4 }[difficulty];
+  const speed = { easy: 1.6, medium: 2.4, hard: 3.4 }[difficulty]; // px per tick
+  const zoneWidth = { easy: 70, medium: 50, hard: 36 }[difficulty];
+  const trackWidth = 420;
+  let stagesDone = 0;
+  let misses = 0;
+  const maxMisses = 3;
+  setLives(maxMisses, maxMisses - misses);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'bar-wrap';
+  wrap.innerHTML = `
+    <div class="bar-track" style="width:${trackWidth}px">
+      <div class="bar-zone" id="zone"></div>
+      <div class="bar-marker" id="marker"></div>
+    </div>
+    <div class="bar-progress" id="progress"></div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('skillbar.hint');
+  stage.appendChild(hint);
+
+  const zoneEl = wrap.querySelector('#zone');
+  const markerEl = wrap.querySelector('#marker');
+  const progressEl = wrap.querySelector('#progress');
+  for (let i = 0; i < stages; i++) {
+    const pip = document.createElement('div');
+    pip.className = 'bar-pip';
+    progressEl.appendChild(pip);
+  }
+
+  function newZone() {
+    const x = randInt(0, trackWidth - zoneWidth);
+    zoneEl.style.left = x + 'px';
+    zoneEl.style.width = zoneWidth + 'px';
+  }
+  newZone();
+
+  let pos = 0, dir = 1, raf;
+  function loop() {
+    pos += speed * dir;
+    if (pos >= trackWidth - 4) dir = -1;
+    if (pos <= 0) dir = 1;
+    markerEl.style.left = pos + 'px';
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+
+  function onKey(e) {
+    if (e.code !== 'Space') return;
+    e.preventDefault();
+    const zoneLeft = parseFloat(zoneEl.style.left);
+    const inZone = pos >= zoneLeft && pos <= zoneLeft + zoneWidth;
+    if (inZone) {
+      flashResult(true);
+      progressEl.children[stagesDone].classList.add('done');
+      stagesDone++;
+      if (stagesDone >= stages) { finish(true, { stages }); return; }
+      newZone();
+    } else {
+      flashResult(false);
+      misses++;
+      setLives(maxMisses, maxMisses - misses);
+      if (misses >= maxMisses) { finish(false, { reason: 'too_many_misses' }); return; }
+    }
+  }
+  window.addEventListener('keydown', onKey);
+  current.cleanup = () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', onKey); };
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   5) CODEBREAKER - mastermind-style numeric code guessing
+   ========================================================================= */
+function buildCodebreaker(difficulty, timeLimit) {
+  const codeLen = { easy: 3, medium: 4, hard: 5 }[difficulty];
+  const maxGuesses = { easy: 10, medium: 8, hard: 6 }[difficulty];
+  const code = Array.from({ length: codeLen }, () => randInt(0, 7));
+  let guess = [];
+  let guessesUsed = 0;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'code-wrap';
+  wrap.innerHTML = `
+    <div class="history" id="history"></div>
+    <div class="code-row" id="currentRow"></div>
+    <div class="keypad" id="keypad"></div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('codebreaker.hint', { len: codeLen });
+  stage.appendChild(hint);
+
+  const historyEl = wrap.querySelector('#history');
+  const rowEl = wrap.querySelector('#currentRow');
+  const keypad = wrap.querySelector('#keypad');
+
+  function renderRow() {
+    rowEl.innerHTML = '';
+    for (let i = 0; i < codeLen; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'code-slot';
+      slot.textContent = guess[i] !== undefined ? guess[i] : '';
+      rowEl.appendChild(slot);
+    }
+    const submit = document.createElement('button');
+    submit.className = 'btn primary';
+    submit.textContent = t('codebreaker.enter');
+    submit.disabled = guess.length !== codeLen;
+    submit.onclick = submitGuess;
+    rowEl.appendChild(submit);
+  }
+
+  for (let d = 0; d <= 7; d++) {
+    const key = document.createElement('button');
+    key.className = 'btn';
+    key.textContent = d;
+    key.onclick = () => {
+      if (guess.length < codeLen) { guess.push(d); renderRow(); }
+    };
+    keypad.appendChild(key);
+  }
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'btn';
+  clearBtn.textContent = t('codebreaker.clear');
+  clearBtn.onclick = () => { guess = []; renderRow(); };
+  keypad.appendChild(clearBtn);
+
+  function submitGuess() {
+    if (guess.length !== codeLen) return;
+    guessesUsed++;
+    const codeCopy = [...code];
+    const guessCopy = [...guess];
+    let green = 0;
+    for (let i = 0; i < codeLen; i++) {
+      if (guessCopy[i] === codeCopy[i]) { green++; codeCopy[i] = null; guessCopy[i] = null; }
+    }
+    let yellow = 0;
+    for (let i = 0; i < codeLen; i++) {
+      if (guessCopy[i] === null) continue;
+      const idx = codeCopy.indexOf(guessCopy[i]);
+      if (idx !== -1) { yellow++; codeCopy[idx] = null; }
+    }
+
+    const row = document.createElement('div');
+    row.className = 'code-row';
+    row.innerHTML = guess.map(g => `<div class="code-slot">${g}</div>`).join('') +
+      `<div class="code-feedback">${
+        Array.from({length: green}).map(()=>'<div class="peg green"></div>').join('') +
+        Array.from({length: yellow}).map(()=>'<div class="peg yellow"></div>').join('')
+      }</div>`;
+    historyEl.appendChild(row);
+    historyEl.scrollTop = historyEl.scrollHeight;
+
+    if (green === codeLen) {
+      finish(true, { guesses: guessesUsed });
+      return;
+    }
+    if (guessesUsed >= maxGuesses) {
+      finish(false, { reason: 'out_of_guesses' });
+      return;
+    }
+    guess = [];
+    renderRow();
+  }
+
+  renderRow();
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   6) FINGERPRINT - find the tile matching the target print
+   ========================================================================= */
+function buildFingerprint(difficulty, timeLimit) {
+  const gridN = { easy: 4, medium: 6, hard: 9 }[difficulty];
+
+  function randPrint() {
+    return { rings: randInt(4, 8), skew: randInt(-30, 30), offset: randInt(-10, 10), hue: randInt(180, 210) };
+  }
+  function printSvg(p, size = 70) {
+    let paths = '';
+    for (let i = 0; i < p.rings; i++) {
+      const r = 6 + i * (size / 2 / p.rings);
+      paths += `<path d="M ${size/2-r},${size/2+p.offset*0.1} A ${r},${r*0.7} ${p.skew} 0 1 ${size/2+r},${size/2+p.offset*0.1}"
+        stroke="hsl(${p.hue},70%,${55+i*2}%)" stroke-width="2" fill="none"/>`;
+    }
+    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`;
+  }
+
+  const target = randPrint();
+  const decoys = Array.from({ length: gridN - 1 }, () => {
+    const d = randPrint();
+    d.hue = target.hue; // same family, subtly different geometry
+    return d;
+  });
+  const tiles = shuffle([target, ...decoys]);
+
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div style="text-align:center">
+      <div class="hint" style="margin-bottom:6px">${t('fingerprint.target_label')}</div>
+      <div class="fp-target">${printSvg(target, 88)}</div>
+      <div class="fp-grid" id="grid" style="grid-template-columns:repeat(${Math.ceil(Math.sqrt(gridN))},70px)"></div>
+    </div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('fingerprint.hint');
+  stage.appendChild(hint);
+
+  const grid = wrap.querySelector('#grid');
+  tiles.forEach((t) => {
+    const tile = document.createElement('div');
+    tile.className = 'fp-tile';
+    tile.innerHTML = printSvg(t, 68);
+    tile.onclick = () => {
+      if (t === target) finish(true, {});
+      else finish(false, { reason: 'wrong_print' });
+    };
+    grid.appendChild(tile);
+  });
+
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   7) RADIO TUNING - drag a dial to match the target frequency
+   ========================================================================= */
+function buildRadioTuning(difficulty, timeLimit) {
+  const tolerance = { easy: 3.5, medium: 2.2, hard: 1.2 }[difficulty];
+  const target = +(rand(80, 180)).toFixed(1);
+  let value = +(rand(80, 180)).toFixed(1);
+  let holdMs = 0;
+  const holdNeeded = 900; // must stay locked-on this long
+
+  const wrap = document.createElement('div');
+  wrap.className = 'tune-wrap';
+  wrap.innerHTML = `
+    <div class="tune-readout" id="readout">${value.toFixed(1)} MHz</div>
+    <div class="tune-target">${t('radiotuning.target_label', { value: target.toFixed(1) })}</div>
+    <div class="tune-meter"><div class="tune-meter-fill" id="meterFill"></div></div>
+    <input type="range" min="80" max="180" step="0.1" value="${value}" class="tune-slider" id="slider">
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('radiotuning.hint');
+  stage.appendChild(hint);
+
+  const readout = wrap.querySelector('#readout');
+  const meterFill = wrap.querySelector('#meterFill');
+  const slider = wrap.querySelector('#slider');
+
+  function update() {
+    value = parseFloat(slider.value);
+    readout.textContent = value.toFixed(1) + ' MHz';
+    const diff = Math.abs(value - target);
+    const closeness = clamp(1 - diff / 15, 0, 1);
+    meterFill.style.width = (closeness * 100) + '%';
+  }
+  slider.addEventListener('input', update);
+  update();
+
+  let raf;
+  function loop() {
+    const diff = Math.abs(value - target);
+    if (diff <= tolerance) {
+      holdMs += 16;
+      readout.style.color = '#51cf66';
+      if (holdMs >= holdNeeded) { finish(true, { target, value }); return; }
+    } else {
+      holdMs = Math.max(0, holdMs - 30);
+      readout.style.color = '#4dabf7';
+    }
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+
+  current.cleanup = () => { cancelAnimationFrame(raf); slider.removeEventListener('input', update); };
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   8) REACTION - press the matching arrow key before it disappears
+   ========================================================================= */
+function buildReaction(difficulty, timeLimit) {
+  const rounds = { easy: 5, medium: 7, hard: 9 }[difficulty];
+  const windowMs = { easy: 850, medium: 600, hard: 420 }[difficulty];
+  const keys = [{ k: 'ArrowUp', s: '↑' }, { k: 'ArrowDown', s: '↓' }, { k: 'ArrowLeft', s: '←' }, { k: 'ArrowRight', s: '→' }];
+  let round = 0;
+  let awaiting = null;
+  let roundTimeout = null;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'reaction-wrap';
+  wrap.innerHTML = `
+    <div class="reaction-key" id="keyDisplay">?</div>
+    <div class="reaction-progress" id="progress"></div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('reaction.hint');
+  stage.appendChild(hint);
+
+  const keyDisplay = wrap.querySelector('#keyDisplay');
+  const progressEl = wrap.querySelector('#progress');
+  for (let i = 0; i < rounds; i++) {
+    const pip = document.createElement('div');
+    pip.className = 'bar-pip';
+    progressEl.appendChild(pip);
+  }
+
+  function nextRound() {
+    if (round >= rounds) { finish(true, { rounds }); return; }
+    awaiting = pick(keys);
+    keyDisplay.textContent = awaiting.s;
+    keyDisplay.style.borderColor = '#4dabf7';
+    roundTimeout = setTimeout(() => {
+      finish(false, { reason: 'too_slow', round });
+    }, windowMs);
+  }
+
+  function onKey(e) {
+    if (!awaiting) return;
+    if (e.key === awaiting.k) {
+      clearTimeout(roundTimeout);
+      progressEl.children[round].classList.add('done');
+      round++;
+      awaiting = null;
+      keyDisplay.textContent = '✓';
+      keyDisplay.style.borderColor = '#51cf66';
+      setTimeout(nextRound, 250);
+    } else if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+      clearTimeout(roundTimeout);
+      finish(false, { reason: 'wrong_key', round });
+    }
+  }
+  window.addEventListener('keydown', onKey);
+  current.cleanup = () => { clearTimeout(roundTimeout); window.removeEventListener('keydown', onKey); };
+
+  nextRound();
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   9) SOBRIETY TEST - trace a wandering line within tolerance
+   ========================================================================= */
+function buildSobriety(difficulty, timeLimit) {
+  const tolerance = { easy: 38, medium: 26, hard: 18 }[difficulty];
+  const allowedOffMs = { easy: 4000, medium: 2600, hard: 1600 }[difficulty];
+  const w = 460, h = 160;
+
+  // build a wandering path
+  const points = [];
+  const segs = 8;
+  for (let i = 0; i <= segs; i++) {
+    points.push([ (w / segs) * i, h / 2 + Math.sin(i * 1.3) * (h / 2 - 25) * (i % 2 === 0 ? 1 : -1) ]);
+  }
+  const d = points.map((p, i) => (i === 0 ? `M ${p[0]} ${p[1]}` : `L ${p[0]} ${p[1]}`)).join(' ');
+
+  const wrap = document.createElement('div');
+  wrap.className = 'sobriety-wrap';
+  // preserveAspectRatio="none" forces the SVG to stretch to exactly fill its
+  // box with no letterboxing, so the linear mouse->viewBox scale math below
+  // always matches what's actually drawn on screen.
+  wrap.innerHTML = `
+    <svg class="sobriety-svg" id="svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <path d="${d}" stroke="#373a40" stroke-width="${tolerance*2}" fill="none" stroke-linecap="round"/>
+      <path d="${d}" stroke="#4dabf7" stroke-width="2" fill="none" stroke-dasharray="4 4"/>
+      <circle id="target" r="7" fill="#fcc419"/>
+      <circle id="cursor" r="6" fill="none" stroke="#51cf66" stroke-width="2"/>
+    </svg>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('sobriety.hint');
+  stage.appendChild(hint);
+
+  const svg = wrap.querySelector('#svg');
+  const pathEl = svg.querySelector('path');
+  const targetEl = wrap.querySelector('#target');
+  const cursorEl = wrap.querySelector('#cursor');
+  const totalLen = pathEl.getTotalLength();
+
+  let mouse = { x: w / 2, y: h / 2 };
+  let offTime = 0;
+  let elapsed = 0;
+
+  function onMove(e) {
+    const rect = svg.getBoundingClientRect();
+    // safe because preserveAspectRatio="none" guarantees a uniform linear
+    // mapping between client pixels and viewBox units on both axes
+    const scaleX = w / rect.width, scaleY = h / rect.height;
+    mouse.x = (e.clientX - rect.left) * scaleX;
+    mouse.y = (e.clientY - rect.top) * scaleY;
+  }
+  svg.addEventListener('mousemove', onMove);
+
+  let raf, last = Date.now();
+  function loop() {
+    const now = Date.now();
+    const dt = now - last; last = now;
+    elapsed += dt;
+
+    const progress = clamp(elapsed / timeLimit, 0, 1);
+    const len = progress * totalLen;
+    const pt = pathEl.getPointAtLength(len);
+    targetEl.setAttribute('cx', pt.x);
+    targetEl.setAttribute('cy', pt.y);
+    cursorEl.setAttribute('cx', mouse.x);
+    cursorEl.setAttribute('cy', mouse.y);
+
+    const dist = Math.hypot(mouse.x - pt.x, mouse.y - pt.y);
+    if (dist > tolerance) {
+      offTime += dt;
+      targetEl.setAttribute('fill', '#fa5252');
+      cursorEl.setAttribute('stroke', '#fa5252');
+    } else {
+      targetEl.setAttribute('fill', '#fcc419');
+      cursorEl.setAttribute('stroke', '#51cf66');
+    }
+
+    if (offTime >= allowedOffMs) { finish(false, { reason: 'drifted_off_line' }); return; }
+    if (progress >= 1) { finish(true, { offTime }); return; }
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+
+  current.cleanup = () => { cancelAnimationFrame(raf); svg.removeEventListener('mousemove', onMove); };
+  // sobriety uses its own internal clock tied to timeLimit, but still show the HUD bar
+  startTimer(timeLimit, () => {}); // visual only; real end condition handled in loop()
+}
+
+/* =========================================================================
+   10) EVIDENCE BOARD - connect matching clue pairs (deductive linking)
+   ========================================================================= */
+function buildEvidenceBoard(difficulty, timeLimit) {
+  const PAIR_POOL = t('evidenceboard.pairs');
+
+  const pairCount = { easy: 3, medium: 4, hard: 5 }[difficulty];
+  const maxMisses = { easy: 4, medium: 3, hard: 2 }[difficulty];
+  let misses = 0, matched = 0;
+  setLives(maxMisses, maxMisses - misses);
+
+  const chosenPairs = shuffle(PAIR_POOL).slice(0, pairCount);
+  let cards = [];
+  chosenPairs.forEach((pair, pairId) => {
+    cards.push({ text: pair[0], pairId, id: pairId + '-a' });
+    cards.push({ text: pair[1], pairId, id: pairId + '-b' });
+  });
+  cards = shuffle(cards);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'evi-grid';
+  wrap.style.gridTemplateColumns = `repeat(${pairCount <= 3 ? 3 : 4}, 1fr)`;
+  cards.forEach((c) => {
+    const card = document.createElement('div');
+    card.className = 'evi-card';
+    card.textContent = c.text;
+    card.dataset.id = c.id;
+    card.dataset.pairId = c.pairId;
+    wrap.appendChild(card);
+  });
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('evidenceboard.hint');
+  stage.appendChild(hint);
+
+  let selected = null;
+
+  function onClick(e) {
+    const card = e.target.closest('.evi-card');
+    if (!card || card.classList.contains('matched')) return;
+
+    if (!selected) {
+      selected = card;
+      card.classList.add('selected');
+      return;
+    }
+    if (selected === card) {
+      card.classList.remove('selected');
+      selected = null;
+      return;
+    }
+
+    if (selected.dataset.pairId === card.dataset.pairId) {
+      selected.classList.remove('selected');
+      selected.classList.add('matched');
+      card.classList.add('matched');
+      matched++;
+      flashResult(true);
+      selected = null;
+      if (matched >= pairCount) { finish(true, { pairs: matched }); }
+    } else {
+      card.classList.add('miss-flash');
+      selected.classList.add('miss-flash');
+      flashResult(false);
+      misses++;
+      setLives(maxMisses, maxMisses - misses);
+      const prev = selected;
+      setTimeout(() => { card.classList.remove('miss-flash'); prev.classList.remove('miss-flash', 'selected'); }, 300);
+      selected = null;
+      if (misses >= maxMisses) { finish(false, { reason: 'too_many_misses' }); }
+    }
+  }
+  wrap.addEventListener('click', onClick);
+  current.cleanup = () => wrap.removeEventListener('click', onClick);
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   11) CONTRADICTION - spot which witness statement contradicts the facts
+   ========================================================================= */
+function buildContradiction(difficulty, timeLimit) {
+  const SCENARIOS = t('contradiction.scenarios');
+
+  const maxMisses = { easy: 2, medium: 1, hard: 0 }[difficulty];
+  let misses = 0;
+  setLives(maxMisses + 1, maxMisses + 1 - misses);
+
+  const scenario = pick(SCENARIOS);
+  const statements = shuffle(scenario.statements);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'contra-wrap';
+  wrap.innerHTML = `<div class="contra-fact">${t('contradiction.fact_prefix')}${scenario.fact}</div>
+    <div class="contra-list" id="list"></div>`;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('contradiction.hint');
+  stage.appendChild(hint);
+
+  const listEl = wrap.querySelector('#list');
+  statements.forEach((s) => {
+    const item = document.createElement('div');
+    item.className = 'contra-item';
+    item.textContent = s.text;
+    item.onclick = () => {
+      if (s.bad) {
+        finish(true, {});
+      } else {
+        item.classList.add('miss-flash');
+        flashResult(false);
+        misses++;
+        setLives(maxMisses + 1, maxMisses + 1 - misses);
+        setTimeout(() => item.classList.remove('miss-flash'), 300);
+        if (misses > maxMisses) finish(false, { reason: 'wrong_statement' });
+      }
+    };
+    listEl.appendChild(item);
+  });
+
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   12) SURVEILLANCE - scrub a timeline to find the exact frame the subject
+   appears in. No visible target zone - you have to read the feedback text.
+   ========================================================================= */
+function buildSurveillance(difficulty, timeLimit) {
+  const windowPct = { easy: 9, medium: 6, hard: 4 }[difficulty]; // % width of the hit window
+  const maxAttempts = { easy: 5, medium: 4, hard: 3 }[difficulty];
+  let attemptsUsed = 0;
+  setLives(maxAttempts, maxAttempts - attemptsUsed);
+
+  const totalSeconds = 180;
+  const windowStart = rand(15, 100 - windowPct - 15); // % position, kept off the edges
+  const windowEnd = windowStart + windowPct;
+  let value = 0; // 0-100 %
+
+  const wrap = document.createElement('div');
+  wrap.className = 'surv-wrap';
+  wrap.innerHTML = `
+    <div class="surv-readout" id="readout">${t('surveillance.idle_readout')}</div>
+    <input type="range" min="0" max="100" step="0.2" value="0" class="surv-slider" id="slider">
+    <button class="btn primary" id="captureBtn" style="margin-top:14px">${t('surveillance.capture_btn')}</button>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('surveillance.hint', { attempts: maxAttempts });
+  stage.appendChild(hint);
+
+  const readout = wrap.querySelector('#readout');
+  const slider = wrap.querySelector('#slider');
+  const captureBtn = wrap.querySelector('#captureBtn');
+
+  function inWindow(v) { return v >= windowStart && v <= windowEnd; }
+
+  function describe(v) {
+    const secs = Math.round((v / 100) * totalSeconds);
+    const mm = Math.floor(secs / 60).toString().padStart(2, '0');
+    const ss = (secs % 60).toString().padStart(2, '0');
+    const desc = inWindow(v) ? t('surveillance.subject_desc') : pick(t('surveillance.fillers'));
+    return `FRAME ${mm}:${ss} — ${desc}`;
+  }
+
+  function update() {
+    value = parseFloat(slider.value);
+    readout.textContent = describe(value);
+    readout.style.color = inWindow(value) ? '#51cf66' : '#4dabf7';
+  }
+  slider.addEventListener('input', update);
+  update();
+
+  function capture() {
+    attemptsUsed++;
+    if (inWindow(value)) {
+      finish(true, { value, attempts: attemptsUsed });
+      return;
+    }
+    flashResult(false);
+    setLives(maxAttempts, maxAttempts - attemptsUsed);
+    if (attemptsUsed >= maxAttempts) {
+      finish(false, { reason: 'out_of_attempts' });
+    }
+  }
+  captureBtn.addEventListener('click', capture);
+
+  function onKey(e) {
+    if (e.key === 'c' || e.key === 'C') capture();
+  }
+  window.addEventListener('keydown', onKey);
+
+  current.cleanup = () => {
+    slider.removeEventListener('input', update);
+    captureBtn.removeEventListener('click', capture);
+    window.removeEventListener('keydown', onKey);
+  };
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   13) SPOT THE DIFFERENCE - compare two evidence photos
+   ========================================================================= */
+function buildSpotDiff(difficulty, timeLimit) {
+  const shapeCount = { easy: 8, medium: 12, hard: 16 }[difficulty];
+  const diffCount = { easy: 3, medium: 4, hard: 5 }[difficulty];
+  const maxMisses = { easy: 5, medium: 4, hard: 3 }[difficulty];
+  let misses = 0, found = 0;
+  setLives(maxMisses, maxMisses - misses);
+
+  const size = 220;
+  const palette = ['#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#1abc9c', '#e67e22', '#ecf0f1', '#f783ac'];
+
+  // Place shapes with a minimum center-to-center distance so circles never
+  // overlap. Overlap was the root cause of "clicking the same dot" misfiring
+  // as a miss: a click near a diff circle could land on a different circle
+  // stacked underneath it, since closest() always resolves to whichever
+  // element is topmost in the DOM at that pixel.
+  const maxR = 13;
+  const minDist = maxR * 2.6;
+  const shapes = [];
+  for (let n = 0; n < shapeCount; n++) {
+    let placed = false;
+    for (let attempt = 0; attempt < 60 && !placed; attempt++) {
+      const candidate = { x: rand(18, size - 18), y: rand(18, size - 18), r: rand(6, maxR), color: pick(palette) };
+      const collides = shapes.some((s) => Math.hypot(s.x - candidate.x, s.y - candidate.y) < minDist);
+      if (!collides) { shapes.push(candidate); placed = true; }
+    }
+    // if we couldn't find a free spot after 60 tries, just stop adding more
+    // (keeps shapes non-overlapping rather than forcing a cramped grid)
+    if (!placed) break;
+  }
+
+  const diffIndices = new Set(shuffle(shapes.map((_, i) => i)).slice(0, Math.min(diffCount, shapes.length)));
+  const shapes2 = shapes.map((s, i) => {
+    if (!diffIndices.has(i)) return { ...s };
+    const newColor = pick(palette.filter((c) => c !== s.color));
+    return { ...s, color: newColor, r: s.r * (Math.random() > 0.5 ? 1.4 : 0.65), isDiff: true };
+  });
+  const actualDiffCount = diffIndices.size;
+
+  function renderSvg(list, interactive) {
+    const circles = list.map((s, i) =>
+      `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" fill="${s.color}" ${interactive ? `data-i="${i}" class="diff-shape"` : ''}/>`
+    ).join('');
+    return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${circles}</svg>`;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'spotdiff-wrap';
+  wrap.innerHTML = `
+    <div class="spotdiff-col">
+      <div class="spotdiff-label">${t('spotdiff.original')}</div>
+      <div class="spotdiff-photo">${renderSvg(shapes, false)}</div>
+    </div>
+    <div class="spotdiff-col">
+      <div class="spotdiff-label">${t('spotdiff.evidence')}</div>
+      <div class="spotdiff-photo" id="photo2">${renderSvg(shapes2, true)}</div>
+    </div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('spotdiff.hint', { count: actualDiffCount });
+  stage.appendChild(hint);
+
+  const photo2 = wrap.querySelector('#photo2');
+  function onClick(e) {
+    const shape = e.target.closest('.diff-shape');
+    if (!shape) return;
+    const i = Number(shape.dataset.i);
+    if (shapes2[i].clicked) return; // already resolved (correct or wrong) - ignore repeat clicks
+    shapes2[i].clicked = true;
+
+    if (shapes2[i].isDiff) {
+      shape.setAttribute('stroke', '#51cf66');
+      shape.setAttribute('stroke-width', '3');
+      found++;
+      flashResult(true);
+      if (found >= actualDiffCount) { finish(true, { found }); }
+    } else {
+      shape.setAttribute('stroke', '#fa5252');
+      shape.setAttribute('stroke-width', '2');
+      shape.setAttribute('opacity', '0.5');
+      flashResult(false);
+      misses++;
+      setLives(maxMisses, maxMisses - misses);
+      if (misses >= maxMisses) { finish(false, { reason: 'too_many_misses' }); }
+    }
+  }
+  photo2.addEventListener('click', onClick);
+  current.cleanup = () => photo2.removeEventListener('click', onClick);
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   14) REDACTION - scan a report and click every occurrence of the flagged
+   keyword before time runs out.
+   ========================================================================= */
+function buildRedaction(difficulty, timeLimit) {
+  const WORD_BANK = t('redaction.word_bank').split(' ');
+  const KEYWORDS = t('redaction.keywords');
+  const keyword = pick(KEYWORDS);
+
+  const totalWords = { easy: 70, medium: 100, hard: 130 }[difficulty];
+  const occurrences = { easy: 4, medium: 6, hard: 8 }[difficulty];
+  const maxMisses = { easy: 6, medium: 5, hard: 4 }[difficulty];
+  let misses = 0, foundCount = 0;
+  setLives(maxMisses, maxMisses - misses);
+
+  const words = Array.from({ length: totalWords }, () => pick(WORD_BANK));
+  const slots = shuffle(Array.from({ length: totalWords }, (_, i) => i)).slice(0, occurrences);
+  slots.forEach((i) => { words[i] = keyword; });
+
+  const wrap = document.createElement('div');
+  wrap.className = 'redact-wrap';
+  wrap.innerHTML = `<div class="redact-target">${t('redaction.target_label')} <span class="redact-key">${keyword.toUpperCase()}</span></div>
+    <div class="redact-doc" id="doc"></div>`;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('redaction.hint', { count: occurrences });
+  stage.appendChild(hint);
+
+  const docEl = wrap.querySelector('#doc');
+  words.forEach((w, i) => {
+    const span = document.createElement('span');
+    span.className = 'redact-word';
+    span.textContent = w;
+    span.dataset.i = i;
+    span.dataset.key = (w === keyword) ? '1' : '0';
+    docEl.appendChild(span);
+    docEl.appendChild(document.createTextNode(' '));
+  });
+
+  function onClick(e) {
+    const span = e.target.closest('.redact-word');
+    if (!span) return;
+    if (span.dataset.key === '1') {
+      if (span.classList.contains('found')) return;
+      span.classList.add('found');
+      foundCount++;
+      flashResult(true);
+      if (foundCount >= occurrences) { finish(true, { found: foundCount }); }
+    } else {
+      span.classList.add('miss-flash');
+      flashResult(false);
+      misses++;
+      setLives(maxMisses, maxMisses - misses);
+      setTimeout(() => span.classList.remove('miss-flash'), 300);
+      if (misses >= maxMisses) { finish(false, { reason: 'too_many_misses' }); }
+    }
+  }
+  docEl.addEventListener('click', onClick);
+  current.cleanup = () => docEl.removeEventListener('click', onClick);
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   15) INTERROGATION - multi-round dialogue tree, pick the question that
+   keeps pressure on the suspect. Wrong choices cost "patience" (lives);
+   running out of patience before the case's rounds are cleared is a fail.
+   ========================================================================= */
+function buildInterrogation(difficulty, timeLimit) {
+  const cases = t('interrogation.cases');
+  const caseData = pick(cases);
+  const maxPatience = { easy: 4, medium: 3, hard: 2 }[difficulty];
+  let patience = maxPatience;
+  let round = 0;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'interro-wrap';
+  wrap.innerHTML = `
+    <div class="interro-intro" id="intro">${caseData.intro}</div>
+    <div class="interro-prompt" id="prompt"></div>
+    <div class="interro-options" id="options"></div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('interrogation.hint');
+  stage.appendChild(hint);
+
+  const promptEl = wrap.querySelector('#prompt');
+  const optionsEl = wrap.querySelector('#options');
+
+  function renderPatience() {
+    setLives(maxPatience, patience);
+  }
+  renderPatience();
+
+  function renderRound() {
+    if (round >= caseData.rounds.length) {
+      finish(true, { rounds: round, message: t('interrogation.cracked') });
+      return;
+    }
+    const r = caseData.rounds[round];
+    promptEl.textContent = r.prompt;
+    optionsEl.innerHTML = '';
+    shuffle(r.options).forEach((opt) => {
+      const btn = document.createElement('button');
+      btn.className = 'interro-btn';
+      btn.textContent = opt.text;
+      btn.onclick = () => {
+        if (opt.good) {
+          btn.classList.add('good-flash');
+          flashResult(true);
+          round++;
+          setTimeout(renderRound, 280);
+        } else {
+          btn.classList.add('bad-flash');
+          flashResult(false);
+          patience--;
+          renderPatience();
+          if (patience <= 0) {
+            finish(false, { reason: 'suspect_lawyered_up', round });
+            return;
+          }
+          setTimeout(() => btn.classList.remove('bad-flash'), 300);
+        }
+      };
+      optionsEl.appendChild(btn);
+    });
+  }
+  renderRound();
+
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   16) TRIANGULATION - three "signal towers" each report a distance to a
+   hidden grid cell; click the cell where all three distance rings overlap.
+   ========================================================================= */
+function buildTriangulation(difficulty, timeLimit) {
+  const gridN = { easy: 6, medium: 8, hard: 10 }[difficulty];
+  const maxMisses = { easy: 4, medium: 3, hard: 2 }[difficulty];
+  let misses = 0;
+  setLives(maxMisses, maxMisses - misses);
+
+  // pick a hidden target cell, then derive 3 tower positions + their exact
+  // (rounded) distance to it so the rings genuinely intersect at the target
+  const targetX = randInt(0, gridN - 1);
+  const targetY = randInt(0, gridN - 1);
+
+  function randomTower() {
+    let x, y;
+    do { x = randInt(0, gridN - 1); y = randInt(0, gridN - 1); }
+    while (x === targetX && y === targetY);
+    return { x, y };
+  }
+  const towers = [randomTower(), randomTower(), randomTower()].map((p) => ({
+    ...p,
+    dist: Math.round(Math.hypot(p.x - targetX, p.y - targetY) * 10) / 10,
+  }));
+
+  const cell = 36;
+  const size = gridN * cell;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'tri-wrap';
+  wrap.innerHTML = `
+    <div class="tri-readout" id="towerReadout">
+      ${towers.map((tw, i) => `TOWER ${i + 1}: ${tw.dist} units from target`).join('<br>')}
+    </div>
+    <svg class="tri-svg" id="triSvg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"></svg>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('triangulation.hint');
+  stage.appendChild(hint);
+
+  const svg = wrap.querySelector('#triSvg');
+
+  // grid cells
+  for (let gx = 0; gx < gridN; gx++) {
+    for (let gy = 0; gy < gridN; gy++) {
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', gx * cell);
+      rect.setAttribute('y', gy * cell);
+      rect.setAttribute('width', cell - 2);
+      rect.setAttribute('height', cell - 2);
+      rect.setAttribute('fill', '#25262b');
+      rect.setAttribute('stroke', '#373a40');
+      rect.dataset.gx = gx;
+      rect.dataset.gy = gy;
+      rect.classList.add('tri-cell');
+      svg.appendChild(rect);
+    }
+  }
+  // tower markers + distance rings (rings are purely visual flavor; exact
+  // matching is grid-based so fractional pixel rounding never matters)
+  towers.forEach((tw, i) => {
+    const cx = tw.x * cell + cell / 2, cy = tw.y * cell + cell / 2;
+    const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    ring.setAttribute('cx', cx);
+    ring.setAttribute('cy', cy);
+    ring.setAttribute('r', tw.dist * cell);
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', ['#4dabf7', '#fcc419', '#f783ac'][i % 3]);
+    ring.setAttribute('stroke-width', '1.5');
+    ring.setAttribute('stroke-dasharray', '4 3');
+    ring.setAttribute('opacity', '0.55');
+    svg.appendChild(ring);
+
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('cx', cx);
+    dot.setAttribute('cy', cy);
+    dot.setAttribute('r', 5);
+    dot.setAttribute('fill', ['#4dabf7', '#fcc419', '#f783ac'][i % 3]);
+    svg.appendChild(dot);
+  });
+
+  function onClick(e) {
+    const rect = e.target.closest('.tri-cell');
+    if (!rect) return;
+    const gx = Number(rect.dataset.gx), gy = Number(rect.dataset.gy);
+    if (gx === targetX && gy === targetY) {
+      rect.setAttribute('fill', 'rgba(81,207,102,0.5)');
+      finish(true, { x: gx, y: gy });
+    } else {
+      rect.setAttribute('fill', 'rgba(250,82,82,0.4)');
+      flashResult(false);
+      misses++;
+      setLives(maxMisses, maxMisses - misses);
+      if (misses >= maxMisses) finish(false, { reason: 'too_many_misses' });
+    }
+  }
+  svg.addEventListener('click', onClick);
+  current.cleanup = () => svg.removeEventListener('click', onClick);
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+/* =========================================================================
+   17) MEMORY SEARCH - tiles briefly reveal contraband icons, then flip face
+   down; click every tile that showed contraband, in any order.
+   ========================================================================= */
+function buildMemorySearch(difficulty, timeLimit) {
+  const gridN = { easy: 9, medium: 12, hard: 16 }[difficulty];
+  const contrabandCount = { easy: 3, medium: 4, hard: 5 }[difficulty];
+  const maxMisses = { easy: 3, medium: 2, hard: 2 }[difficulty];
+  const previewMs = { easy: 3500, medium: 2600, hard: 1900 }[difficulty];
+  let misses = 0, foundCount = 0;
+  setLives(maxMisses, maxMisses - misses);
+
+  const icons = t('memorysearch.icons');
+  const contrabandIdx = new Set(shuffle(Array.from({ length: gridN }, (_, i) => i)).slice(0, contrabandCount));
+
+  const wrap = document.createElement('div');
+  wrap.className = 'mem-grid';
+  const cols = Math.ceil(Math.sqrt(gridN));
+  wrap.style.gridTemplateColumns = `repeat(${cols}, 56px)`;
+
+  const tiles = [];
+  for (let i = 0; i < gridN; i++) {
+    const tile = document.createElement('div');
+    tile.className = 'mem-tile revealed';
+    tile.dataset.i = i;
+    if (contrabandIdx.has(i)) {
+      tile.textContent = pick(icons);
+      tile.dataset.contraband = '1';
+    }
+    wrap.appendChild(tile);
+    tiles.push(tile);
+  }
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('memorysearch.hint');
+  stage.appendChild(hint);
+
+  let locked = true;
+  const revealTimeout = setTimeout(() => {
+    tiles.forEach((tile) => {
+      tile.classList.remove('revealed');
+      tile.textContent = '';
+    });
+    locked = false;
+  }, previewMs);
+
+  function onClick(e) {
+    if (locked) return;
+    const tile = e.target.closest('.mem-tile');
+    if (!tile || tile.classList.contains('resolved')) return;
+    tile.classList.add('resolved');
+
+    if (tile.dataset.contraband === '1') {
+      tile.classList.add('revealed', 'found-correct');
+      tile.textContent = '✓';
+      foundCount++;
+      flashResult(true);
+      if (foundCount >= contrabandCount) finish(true, { found: foundCount });
+    } else {
+      tile.classList.add('found-wrong');
+      flashResult(false);
+      misses++;
+      setLives(maxMisses, maxMisses - misses);
+      if (misses >= maxMisses) finish(false, { reason: 'too_many_misses' });
+    }
+  }
+  wrap.addEventListener('click', onClick);
+  current.cleanup = () => { clearTimeout(revealTimeout); wrap.removeEventListener('click', onClick); };
+  startTimer(timeLimit, () => finish(false, { reason: 'timeout' }));
+}
+
+</script>
+<script>
+/* =========================================================================
+   srm-minigames - html/js/games-ambulance.js
+   Ambulance minigames (15). Each build* function receives (difficulty, timeLimit).
+   ========================================================================= */
+
+/* =========================================================================
+   1) CPR RHYTHM
+   Beat indicator pulses at a set tempo. Press SPACE to match it.
+   ========================================================================= */
+function buildCPR(difficulty, timeLimit) {
+  const targetBpm = 100; // adult CPR target
+  const beatMs = Math.round(60000 / targetBpm);
+  const tolerance = { easy: 260, medium: 180, hard: 110 }[difficulty];
+  const beatsNeeded = { easy: 5, medium: 8, hard: 12 }[difficulty];
+  const maxMisses = { easy: 4, medium: 3, hard: 2 }[difficulty];
+  let beats = 0, misses = 0, lastBeatTime = null;
+  setLives(maxMisses, maxMisses - misses);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'cpr-wrap';
+  wrap.innerHTML = `
+    <div class="cpr-bpm" id="bpmDisplay">--</div>
+    <div class="cpr-target">${t('cpr.target_label', { target: targetBpm })}</div>
+    <div class="cpr-beat" id="beatCircle"></div>
+    <div class="cpr-history" id="history"></div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('cpr.hint', { beats: beatsNeeded });
+  stage.appendChild(hint);
+
+  const beatCircle = wrap.querySelector('#beatCircle');
+  const bpmDisplay = wrap.querySelector('#bpmDisplay');
+  const historyEl  = wrap.querySelector('#history');
+  for (let i=0;i<beatsNeeded;i++){ const p=document.createElement('div'); p.className='cpr-pip'; historyEl.appendChild(p); }
+
+  // pulse the circle at target rhythm to give visual cue
+  let raf, pulsePhase = 0;
+  const startTime = Date.now();
+  function loop(){
+    pulsePhase = ((Date.now()-startTime) % beatMs) / beatMs;
+    beatCircle.classList.toggle('pulse', pulsePhase < 0.18);
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+
+  function onKey(e){
+    if(e.code !== 'Space') return;
+    e.preventDefault();
+    const now = Date.now();
+    // measure how close to the beat we are
+    const phase = ((now - startTime) % beatMs);
+    const distToBeat = Math.min(phase, beatMs - phase);
+    const actualBpm = lastBeatTime ? Math.round(60000/(now-lastBeatTime)) : null;
+    lastBeatTime = now;
+    if(actualBpm) bpmDisplay.textContent = actualBpm;
+
+    if(distToBeat <= tolerance){
+      historyEl.children[beats].classList.add('ok');
+      beats++;
+      flashResult(true);
+      if(beats >= beatsNeeded){ finish(true,{beats}); return; }
+    } else {
+      historyEl.children[beats].classList.add('miss');
+      flashResult(false);
+      misses++;
+      setLives(maxMisses, maxMisses-misses);
+      if(misses >= maxMisses){ finish(false,{reason:'poor_rhythm'}); return; }
+    }
+  }
+  window.addEventListener('keydown', onKey);
+  current.cleanup = ()=>{ cancelAnimationFrame(raf); window.removeEventListener('keydown',onKey); };
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   2) DEFIBRILLATOR
+   A gauge charges continuously. Hit SPACE when inside the green joule zone.
+   ========================================================================= */
+function buildDefib(difficulty, timeLimit){
+  const minJ = { easy:120, medium:150, hard:170 }[difficulty];
+  const maxJ = { easy:220, medium:200, hard:195 }[difficulty];
+  const maxAttempts = { easy:4, medium:3, hard:2 }[difficulty];
+  let attempts = 0;
+  setLives(maxAttempts, maxAttempts-attempts);
+
+  const totalJ = 360;
+  const speed = { easy:0.6, medium:0.9, hard:1.3 }[difficulty]; // J per tick
+  let joules = 0, dir = 1;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'defib-wrap';
+  const zoneLeft = (minJ/totalJ)*100, zoneWidth = ((maxJ-minJ)/totalJ)*100;
+  wrap.innerHTML = `
+    <div class="defib-readout" id="defibReadout">0 J</div>
+    <div class="defib-label">${t('defib.zone_label',{min:minJ,max:maxJ})}</div>
+    <div class="defib-gauge">
+      <div class="defib-fill" id="defibFill"></div>
+      <div class="defib-zone" style="left:${zoneLeft}%;width:${zoneWidth}%"></div>
+    </div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('defib.hint');
+  stage.appendChild(hint);
+
+  const fill = wrap.querySelector('#defibFill');
+  const readout = wrap.querySelector('#defibReadout');
+
+  let raf;
+  function loop(){
+    joules += speed * dir;
+    if(joules >= totalJ){ joules = totalJ; dir = -1; }
+    if(joules <= 0){ joules = 0; dir = 1; }
+    fill.style.width = (joules/totalJ*100)+'%';
+    readout.textContent = Math.round(joules)+' J';
+    readout.style.color = (joules>=minJ && joules<=maxJ) ? 'var(--green)' : 'var(--amber)';
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+
+  function onKey(e){
+    if(e.code !== 'Space') return;
+    e.preventDefault();
+    attempts++;
+    if(joules >= minJ && joules <= maxJ){
+      finish(true,{joules:Math.round(joules), attempts});
+    } else {
+      flashResult(false);
+      setLives(maxAttempts, maxAttempts-attempts);
+      if(attempts >= maxAttempts) finish(false,{reason:'wrong_energy'});
+    }
+  }
+  window.addEventListener('keydown', onKey);
+  current.cleanup = ()=>{ cancelAnimationFrame(raf); window.removeEventListener('keydown',onKey); };
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   3) VITALS ASSESSMENT
+   Show a set of patient vitals; one is outside normal range. Click it.
+   ========================================================================= */
+function buildVitals(difficulty, timeLimit){
+  const maxMisses = { easy:3, medium:2, hard:1 }[difficulty];
+  let misses = 0;
+  setLives(maxMisses, maxMisses-misses);
+
+  const readings = t('vitals.readings');
+  const selected = shuffle(readings).slice(0, { easy:4, medium:5, hard:6 }[difficulty]);
+
+  // generate values: one abnormal, rest normal
+  const abnormalIdx = randInt(0, selected.length-1);
+  const cards = selected.map((r, i) => {
+    if(r.values){
+      // categorical vital (e.g. pupils)
+      const isAbnormal = (i === abnormalIdx);
+      return { ...r, display: isAbnormal ? pick(r.abnormal) : r.values[0], isAbnormal };
+    }
+    const [lo,hi] = r.normal;
+    let v;
+    if(i === abnormalIdx){
+      v = Math.random()<0.5 ? rand(lo*0.55, lo*0.88) : rand(hi*1.12, hi*1.45);
+    } else {
+      v = rand(lo, hi);
+    }
+    const formatted = r.format.includes('.1f') ? v.toFixed(1) : r.format.includes('.2f') ? v.toFixed(2) : Math.round(v).toString();
+    return { ...r, display: formatted, isAbnormal: i === abnormalIdx };
+  });
+
+  const wrap = document.createElement('div');
+  wrap.className = 'vitals-wrap';
+  const grid = document.createElement('div');
+  grid.className = 'vitals-grid';
+  wrap.appendChild(grid);
+  stage.appendChild(wrap);
+
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('vitals.hint');
+  stage.appendChild(hint);
+
+  cards.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'vital-card';
+    card.innerHTML = `<div class="vital-name">${c.name}</div>
+      <div class="vital-value">${c.display} <span class="vital-unit">${c.unit}</span></div>`;
+    card.onclick = () => {
+      if(c.isAbnormal){
+        finish(true,{vital:c.name});
+      } else {
+        card.classList.add('miss-flash');
+        flashResult(false);
+        misses++;
+        setLives(maxMisses, maxMisses-misses);
+        setTimeout(()=>card.classList.remove('miss-flash'),300);
+        if(misses >= maxMisses) finish(false,{reason:'too_many_misses'});
+      }
+    };
+    grid.appendChild(card);
+  });
+
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   4) IV LINE INSERTION
+   Mouse-controlled cursor must stay inside an SVG vein path.
+   ========================================================================= */
+function buildIVLine(difficulty, timeLimit){
+  const tolerance = { easy:18, medium:12, hard:8 }[difficulty];
+  const allowedOffMs = { easy:1800, medium:1000, hard:600 }[difficulty];
+  const w = 440, h = 140;
+
+  // straight-ish vein with slight curves
+  const pts = [];
+  const segs = 6;
+  for(let i=0;i<=segs;i++){
+    pts.push([(w/segs)*i, h/2 + (i%2===0?1:-1)*rand(10,28)*(i>0&&i<segs?1:0)]);
+  }
+  const d = pts.map((p,i)=>(i===0?`M ${p[0]} ${p[1]}`:`L ${p[0]} ${p[1]}`)).join(' ');
+
+  const wrap = document.createElement('div');
+  wrap.className = 'iv-wrap';
+  wrap.innerHTML = `
+    <svg class="iv-svg" id="ivSvg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none">
+      <path d="${d}" stroke="#2c2e33" stroke-width="${tolerance*2}" fill="none" stroke-linecap="round"/>
+      <path d="${d}" stroke="var(--green)" stroke-width="2" fill="none" stroke-dasharray="5 3"/>
+      <circle id="needleTip" r="5" fill="var(--amber)"/>
+      <circle id="ivCursor" r="4" fill="none" stroke="var(--cyan)" stroke-width="2"/>
+    </svg>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('ivline.hint');
+  stage.appendChild(hint);
+
+  const svg = wrap.querySelector('#ivSvg');
+  const pathEl = svg.querySelector('path');
+  const tipEl = wrap.querySelector('#needleTip');
+  const cursorEl = wrap.querySelector('#ivCursor');
+  const totalLen = pathEl.getTotalLength();
+
+  let mouse = { x:w/2, y:h/2 }, offTime = 0, elapsed = 0;
+
+  function onMove(e){
+    const rect = svg.getBoundingClientRect();
+    mouse.x = (e.clientX - rect.left) * (w/rect.width);
+    mouse.y = (e.clientY - rect.top) * (h/rect.height);
+  }
+  svg.addEventListener('mousemove', onMove);
+
+  let raf, last = Date.now();
+  function loop(){
+    const now = Date.now(), dt = now-last; last = now;
+    elapsed += dt;
+    const progress = clamp(elapsed/timeLimit, 0, 1);
+    const pt = pathEl.getPointAtLength(progress * totalLen);
+    tipEl.setAttribute('cx', pt.x);
+    tipEl.setAttribute('cy', pt.y);
+    cursorEl.setAttribute('cx', mouse.x);
+    cursorEl.setAttribute('cy', mouse.y);
+    const dist = Math.hypot(mouse.x-pt.x, mouse.y-pt.y);
+    if(dist > tolerance){
+      offTime += dt;
+      tipEl.setAttribute('fill','var(--red)');
+      cursorEl.setAttribute('stroke','var(--red)');
+    } else {
+      tipEl.setAttribute('fill','var(--amber)');
+      cursorEl.setAttribute('stroke','var(--cyan)');
+    }
+    if(offTime >= allowedOffMs){ finish(false,{reason:'missed_vein'}); return; }
+    if(progress >= 1){ finish(true,{offTime}); return; }
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+  current.cleanup = ()=>{ cancelAnimationFrame(raf); svg.removeEventListener('mousemove',onMove); };
+  startTimer(timeLimit, ()=>{});
+}
+
+/* =========================================================================
+   5) MEDICATION DOSAGE
+   Patient details shown; pick the correctly calculated dose.
+   ========================================================================= */
+function buildDosage(difficulty, timeLimit){
+  const maxMisses = { easy:3, medium:2, hard:1 }[difficulty];
+  let misses = 0;
+  setLives(maxMisses, maxMisses-misses);
+
+  const cases = t('dosage.cases');
+  const c = pick(cases);
+  const [wLo, wHi] = c.weightRange;
+  const weight = randInt(wLo, wHi);
+  const exact = weight * c.perKg;
+  const correct = parseFloat(exact.toFixed(c.decimals));
+
+  // generate 3 plausible wrong answers
+  const wrongs = new Set();
+  while(wrongs.size < 3){
+    const delta = pick([-0.3,-0.2,-0.1,0.1,0.2,0.3,0.5,-0.5,1,-1,2,-2]) * c.perKg * weight;
+    const w = parseFloat((correct+delta).toFixed(c.decimals));
+    if(w > 0 && w !== correct) wrongs.add(w);
+  }
+  const opts = shuffle([correct, ...[...wrongs]]);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'dosage-wrap';
+  wrap.innerHTML = `
+    <div class="dosage-brief">
+      <strong>Drug:</strong> ${c.drug}<br>
+      <strong>Patient weight:</strong> ${weight} kg<br>
+      <strong>Prescribed dose:</strong> ${c.perKg} mg/kg
+    </div>
+    <div class="dosage-formula">${t('dosage.formula')}</div>
+    <div class="dosage-options" id="opts"></div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('dosage.hint');
+  stage.appendChild(hint);
+
+  const optsEl = wrap.querySelector('#opts');
+  opts.forEach(v => {
+    const btn = document.createElement('div');
+    btn.className = 'dosage-opt';
+    btn.textContent = `${v} ${c.unit}`;
+    btn.onclick = () => {
+      if(btn.dataset.resolved) return;
+      if(v === correct){
+        finish(true,{drug:c.drug, dose:correct, weight});
+      } else {
+        btn.dataset.resolved = '1';
+        btn.classList.add('miss-flash');
+        flashResult(false);
+        misses++;
+        setLives(maxMisses, maxMisses-misses);
+        setTimeout(()=>btn.classList.remove('miss-flash'),300);
+        if(misses >= maxMisses) finish(false,{reason:'wrong_dose'});
+      }
+    };
+    optsEl.appendChild(btn);
+  });
+
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   6) AIRWAY SEQUENCE
+   Drag-and-drop to order the 5 emergency airway steps correctly.
+   ========================================================================= */
+function buildAirway(difficulty, timeLimit){
+  const steps = [...t('airway.steps')];
+  const correct = [...steps]; // original order is the correct order
+  const shuffled = shuffle([...steps]);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'airway-wrap';
+  wrap.innerHTML = `<div class="airway-steps" id="stepList"></div>`;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('airway.hint');
+  stage.appendChild(hint);
+
+  const list = wrap.querySelector('#stepList');
+  let dragging = null;
+
+  function renderSteps(arr){
+    list.innerHTML = '';
+    arr.forEach((s, i) => {
+      const el = document.createElement('div');
+      el.className = 'airway-step';
+      el.draggable = true;
+      el.dataset.idx = i;
+      el.innerHTML = `<span class="step-num">${i+1}.</span> ${s}`;
+      el.addEventListener('dragstart', ()=>{ dragging = i; el.classList.add('dragging'); });
+      el.addEventListener('dragend', ()=>{ dragging=null; el.classList.remove('dragging'); });
+      el.addEventListener('dragover', e=>{ e.preventDefault(); });
+      el.addEventListener('drop', ()=>{
+        if(dragging === null || dragging === i) return;
+        const newArr = [...arr];
+        const [moved] = newArr.splice(dragging, 1);
+        newArr.splice(i, 0, moved);
+        renderSteps(newArr);
+      });
+      list.appendChild(el);
+    });
+  }
+  renderSteps(shuffled);
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'btn primary airway-confirm';
+  confirmBtn.textContent = t('airway.confirm_btn');
+  confirmBtn.onclick = () => {
+    const current_order = [...list.children].map(el => el.textContent.replace(/^\d+\.\s*/,'').trim());
+    const isCorrect = current_order.every((s,i) => s === correct[i]);
+    if(isCorrect){
+      finish(true,{});
+    } else {
+      flashResult(false);
+      finish(false,{reason:'wrong_order'});
+    }
+  };
+  stage.appendChild(confirmBtn);
+
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   7) TRIAGE
+   One patient at a time; assign immediate / delayed / minor.
+   ========================================================================= */
+function buildTriage(difficulty, timeLimit){
+  const patients = shuffle(t('triage.patients'));
+  const count = { easy:3, medium:4, hard:5 }[difficulty];
+  const selected = patients.slice(0, count);
+  const cats = t('triage.categories');
+  let idx = 0, correct = 0, wrong = 0;
+  const maxWrong = { easy:2, medium:1, hard:0 }[difficulty];
+  setLives(maxWrong+1, maxWrong+1-wrong);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'triage-wrap';
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('triage.hint');
+  stage.appendChild(hint);
+
+  function renderPatient(){
+    if(idx >= selected.length){ finish(true,{correct,total:selected.length}); return; }
+    const p = selected[idx];
+    wrap.innerHTML = `
+      <div class="triage-patient">${p.desc}</div>
+      <div class="triage-btns">
+        <button class="triage-btn t-immediate" data-cat="immediate">${cats.immediate}</button>
+        <button class="triage-btn t-delayed" data-cat="delayed">${cats.delayed}</button>
+        <button class="triage-btn t-minor" data-cat="minor">${cats.minor}</button>
+      </div>
+    `;
+    wrap.querySelectorAll('.triage-btn').forEach(btn=>{
+      btn.onclick = () => {
+        if(btn.dataset.cat === p.correct){
+          correct++; idx++;
+          flashResult(true);
+          setTimeout(renderPatient, 220);
+        } else {
+          wrong++;
+          setLives(maxWrong+1, maxWrong+1-wrong);
+          flashResult(false);
+          if(wrong > maxWrong){ finish(false,{reason:'wrong_triage', correct}); return; }
+          btn.disabled = true;
+        }
+      };
+    });
+  }
+  renderPatient();
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout', correct}));
+}
+
+/* =========================================================================
+   8) WOUND DRESSING
+   Three-stage skill bar (clean → pack → secure).
+   ========================================================================= */
+function buildWoundDress(difficulty, timeLimit){
+  const speed = { easy:1.4, medium:2.2, hard:3.2 }[difficulty];
+  const zoneWidth = { easy:80, medium:56, hard:38 }[difficulty];
+  const trackWidth = 440;
+  const stages = t('wounddress.stages');
+  let stage_idx = 0, misses = 0;
+  const maxMisses = 3;
+  setLives(maxMisses, maxMisses-misses);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'bar-wrap';
+  wrap.innerHTML = `
+    <div class="section-label" id="stageLabel">${stages[0]}</div>
+    <div style="height:8px"></div>
+    <div class="bar-track" style="width:${trackWidth}px">
+      <div class="bar-zone" id="zone"></div>
+      <div class="bar-marker" id="marker"></div>
+    </div>
+    <div class="bar-progress" id="progress"></div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('wounddress.hint');
+  stage.appendChild(hint);
+
+  const zoneEl = wrap.querySelector('#zone');
+  const markerEl = wrap.querySelector('#marker');
+  const progressEl = wrap.querySelector('#progress');
+  const stageLabelEl = wrap.querySelector('#stageLabel');
+
+  stages.forEach(()=>{ const p=document.createElement('div'); p.className='bar-pip'; progressEl.appendChild(p); });
+
+  function newZone(){ const x=randInt(0,trackWidth-zoneWidth); zoneEl.style.left=x+'px'; zoneEl.style.width=zoneWidth+'px'; }
+  newZone();
+
+  let pos=0, dir=1, raf;
+  function loop(){ pos+=speed*dir; if(pos>=trackWidth-4)dir=-1; if(pos<=0)dir=1; markerEl.style.left=pos+'px'; raf=requestAnimationFrame(loop); }
+  loop();
+
+  function onKey(e){
+    if(e.code !== 'Space') return;
+    e.preventDefault();
+    const zl = parseFloat(zoneEl.style.left);
+    if(pos>=zl && pos<=zl+zoneWidth){
+      progressEl.children[stage_idx].classList.add('done');
+      stage_idx++;
+      flashResult(true);
+      if(stage_idx >= stages.length){ finish(true,{stages:stages.length}); return; }
+      stageLabelEl.textContent = stages[stage_idx];
+      newZone();
+    } else {
+      flashResult(false); misses++;
+      setLives(maxMisses, maxMisses-misses);
+      if(misses >= maxMisses) finish(false,{reason:'too_many_misses'});
+    }
+  }
+  window.addEventListener('keydown', onKey);
+  current.cleanup = ()=>{ cancelAnimationFrame(raf); window.removeEventListener('keydown',onKey); };
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   9) BLOOD PRESSURE MATCHING
+   Two sliders for systolic and diastolic; hold both in range.
+   ========================================================================= */
+function buildBloodPressure(difficulty, timeLimit){
+  const tolerance = { easy:8, medium:5, hard:3 }[difficulty];
+  const holdNeeded = { easy:1200, medium:900, hard:650 }[difficulty];
+
+  const targetSys = randInt(100,160);
+  const targetDia = randInt(60,100);
+  let valSys = randInt(80,180), valDia = randInt(50,110);
+  let holdMs = 0;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'bp-wrap';
+  wrap.innerHTML = `
+    <div class="bp-readout" id="bpReadout">${valSys}/${valDia}</div>
+    <div class="bp-target">${t('bloodpressure.target_label',{sys:targetSys,dia:targetDia})}</div>
+    <div class="bp-sliders">
+      <div class="bp-row"><label>${t('bloodpressure.systolic_label')}</label><input type="range" min="60" max="220" value="${valSys}" id="sliderSys"></div>
+      <div class="bp-row"><label>${t('bloodpressure.diastolic_label')}</label><input type="range" min="40" max="130" value="${valDia}" id="sliderDia"></div>
+    </div>
+    <div class="bp-lock"><div class="bp-lock-fill" id="lockFill"></div></div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('bloodpressure.hint');
+  stage.appendChild(hint);
+
+  const readout = wrap.querySelector('#bpReadout');
+  const lockFill = wrap.querySelector('#lockFill');
+  const sliderSys = wrap.querySelector('#sliderSys');
+  const sliderDia = wrap.querySelector('#sliderDia');
+
+  function update(){ valSys=+sliderSys.value; valDia=+sliderDia.value; readout.textContent=`${valSys}/${valDia}`; }
+  sliderSys.addEventListener('input', update);
+  sliderDia.addEventListener('input', update);
+
+  function inRange(){ return Math.abs(valSys-targetSys)<=tolerance && Math.abs(valDia-targetDia)<=tolerance; }
+
+  let raf;
+  function loop(){
+    if(inRange()){
+      holdMs += 16;
+      readout.style.color='var(--green)';
+      lockFill.style.width=clamp((holdMs/holdNeeded)*100,0,100)+'%';
+      if(holdMs >= holdNeeded){ finish(true,{systolic:valSys,diastolic:valDia}); return; }
+    } else {
+      holdMs = Math.max(0, holdMs-30);
+      readout.style.color='var(--cyan)';
+      lockFill.style.width=clamp((holdMs/holdNeeded)*100,0,100)+'%';
+    }
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+
+  current.cleanup = ()=>{ cancelAnimationFrame(raf); sliderSys.removeEventListener('input',update); sliderDia.removeEventListener('input',update); };
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   10) PATIENT HISTORY
+   Given a suspected diagnosis, click the symptom that doesn't fit.
+   ========================================================================= */
+function buildPatientHistory(difficulty, timeLimit){
+  const maxMisses = { easy:2, medium:1, hard:0 }[difficulty];
+  let misses = 0;
+  setLives(maxMisses+1, maxMisses+1-misses);
+
+  const cases = t('patienthistory.cases');
+  const c = pick(cases);
+  const symptoms = shuffle(c.symptoms);
+
+  const fact = document.createElement('div');
+  fact.className = 'phist-fact';
+  fact.textContent = t('patienthistory.fact_prefix') + c.diagnosis;
+  stage.appendChild(fact);
+
+  const list = document.createElement('div');
+  list.className = 'card-list';
+  stage.appendChild(list);
+
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('patienthistory.hint');
+  stage.appendChild(hint);
+
+  symptoms.forEach(s=>{
+    const item = document.createElement('div');
+    item.className = 'card-item';
+    item.textContent = s.text;
+    item.onclick = ()=>{
+      if(s.bad){
+        finish(true,{});
+      } else {
+        item.classList.add('miss-flash');
+        flashResult(false);
+        misses++;
+        setLives(maxMisses+1, maxMisses+1-misses);
+        setTimeout(()=>item.classList.remove('miss-flash'),300);
+        if(misses > maxMisses) finish(false,{reason:'wrong_symptom'});
+      }
+    };
+    list.appendChild(item);
+  });
+
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   11) ECG READING
+   Show a description, then pick the matching SVG rhythm strip.
+   ========================================================================= */
+function buildECGReading(difficulty, timeLimit){
+  const maxMisses = { easy:3, medium:2, hard:1 }[difficulty];
+  let misses = 0;
+  setLives(maxMisses, maxMisses-misses);
+
+  const rhythms = t('ecgreading.rhythms');
+  const target = pick(rhythms);
+  const distractors = shuffle(rhythms.filter(r=>r.label!==target.label)).slice(0, 3);
+  const options = shuffle([target, ...distractors]);
+
+  function drawECG(r, w, h){
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
+    svg.setAttribute('width',w); svg.setAttribute('height',h);
+    const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    bg.setAttribute('width',w); bg.setAttribute('height',h);
+    bg.setAttribute('fill','#25262b'); svg.appendChild(bg);
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    const pts = generateECGPath(r, w, h);
+    path.setAttribute('d', pts);
+    path.setAttribute('stroke','var(--green)');
+    path.setAttribute('stroke-width','1.5');
+    path.setAttribute('fill','none');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function generateECGPath(r, w, h){
+    const mid = h/2;
+    let pts = `M 0 ${mid}`;
+    const cycles = Math.max(1, Math.floor(r.rate / 20));
+
+    if(r.qrs === 'chaotic'){
+      // VF: random jagged noise
+      let x = 0;
+      while(x < w){
+        x += rand(3,9);
+        pts += ` L ${x} ${mid + rand(-h*0.35, h*0.35)}`;
+      }
+      return pts;
+    }
+
+    const cycleW = r.rate > 0 ? Math.min(w/Math.max(cycles,1), w) : w;
+    for(let c=0;c<Math.ceil(w/cycleW);c++){
+      const ox = c * cycleW;
+      if(ox > w) break;
+      const scale = r.qrs === 'wide' ? 1.6 : 1.0;
+
+      if(r.p && r.rate < 160){
+        // P wave
+        pts += ` L ${ox+cycleW*0.12} ${mid} C ${ox+cycleW*0.15} ${mid-h*0.12}, ${ox+cycleW*0.20} ${mid-h*0.12}, ${ox+cycleW*0.22} ${mid}`;
+      }
+      // Q dip
+      pts += ` L ${ox+cycleW*0.32} ${mid}`;
+      pts += ` L ${ox+cycleW*0.33} ${mid+h*0.08*scale}`;
+      // R spike
+      pts += ` L ${ox+cycleW*0.35} ${mid-h*(r.rate>150?0.28:0.38)*scale}`;
+      // S dip
+      pts += ` L ${ox+cycleW*0.37} ${mid+h*0.10*scale}`;
+      pts += ` L ${ox+cycleW*0.42} ${mid}`;
+      if(r.st === 'normal'){
+        pts += ` L ${ox+cycleW*0.55} ${mid}`;
+      }
+      pts += ` L ${ox+cycleW*0.98} ${mid}`;
+    }
+    return pts;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'ecg-wrap';
+  wrap.innerHTML = `<div class="ecg-label">${t('ecgreading.hint')}</div>
+    <div style="font-family:var(--sans);font-size:13px;color:var(--cyan);margin-bottom:10px;">${target.label}</div>`;
+  const targetSvg = drawECG(target, 440, 80);
+  targetSvg.style.border = '1px solid var(--green)';
+  targetSvg.style.borderRadius = '6px';
+  targetSvg.style.marginBottom = '12px';
+  wrap.appendChild(targetSvg);
+
+  const grid = document.createElement('div');
+  grid.className = 'ecg-grid';
+  wrap.appendChild(grid);
+  stage.appendChild(wrap);
+
+  options.forEach(r => {
+    const tile = document.createElement('div');
+    tile.className = 'ecg-tile';
+    tile.appendChild(drawECG(r, 200, 60));
+    tile.onclick = () => {
+      if(tile.dataset.resolved) return;
+      if(r.label === target.label){
+        finish(true, { rhythm: r.label });
+      } else {
+        tile.dataset.resolved = '1';
+        tile.style.borderColor = 'var(--red)';
+        flashResult(false);
+        misses++;
+        setLives(maxMisses, maxMisses-misses);
+        if(misses >= maxMisses) finish(false,{reason:'wrong_rhythm'});
+      }
+    };
+    grid.appendChild(tile);
+  });
+
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   12) OXYGEN FLOW
+   A simulated SpO₂ drifts; use a slider to hold it in the safe 94–98% range.
+   ========================================================================= */
+function buildOxygenFlow(difficulty, timeLimit){
+  const safeMin = 94, safeMax = 98;
+  const tolerance = { easy:2, medium:1.5, hard:1 }[difficulty];
+  const holdNeeded = { easy:5000, medium:4000, hard:3000 }[difficulty];
+  const driftSpeed = { easy:0.015, medium:0.025, hard:0.04 }[difficulty];
+
+  let flow = 50; // slider 0–100 representing L/min mapped to SpO2
+  let spo2 = rand(88,92); // starts low
+  let holdMs = 0;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'o2-wrap';
+  wrap.innerHTML = `
+    <div class="o2-readout" id="o2Val">${spo2.toFixed(1)}</div>
+    <div class="o2-unit">${t('oxygenflow.readout_unit')}</div>
+    <div class="o2-zone-label">${t('oxygenflow.safe_zone')}</div>
+    <div class="o2-lock"><div class="o2-lock-fill" id="o2LockFill"></div></div>
+    <input type="range" min="0" max="100" value="${flow}" id="o2Slider" style="width:100%">
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('oxygenflow.hint');
+  stage.appendChild(hint);
+
+  const valEl = wrap.querySelector('#o2Val');
+  const lockFill = wrap.querySelector('#o2LockFill');
+  const slider = wrap.querySelector('#o2Slider');
+  slider.addEventListener('input', ()=>{ flow = +slider.value; });
+
+  // flow 0 → SpO2 drops; flow 50 = neutral; flow 100 → SpO2 rises
+  // target is to hold 94–98%
+  let raf, last = Date.now();
+  function loop(){
+    const now = Date.now(), dt = now-last; last = now;
+    const influence = (flow - 50) / 50; // -1 to +1
+    spo2 += influence * driftSpeed * dt - driftSpeed * 0.3 * dt; // always slight downward drift
+    spo2 = clamp(spo2, 60, 100);
+
+    valEl.textContent = spo2.toFixed(1);
+    const inRange = spo2 >= safeMin-tolerance && spo2 <= safeMax+tolerance;
+    wrap.classList.toggle('o2-danger', !inRange);
+    if(inRange){
+      holdMs += dt;
+      lockFill.style.width = clamp((holdMs/holdNeeded)*100,0,100)+'%';
+      if(holdMs >= holdNeeded){ finish(true,{spo2:spo2.toFixed(1), holdMs}); return; }
+    } else {
+      holdMs = Math.max(0, holdMs-dt*1.5);
+      lockFill.style.width = clamp((holdMs/holdNeeded)*100,0,100)+'%';
+    }
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+  current.cleanup = ()=>{ cancelAnimationFrame(raf); };
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   13) DRUG INTERACTION
+   Current medication shown; pick the dangerous interacting drug from 4 opts.
+   ========================================================================= */
+function buildDrugInteract(difficulty, timeLimit){
+  const maxMisses = { easy:3, medium:2, hard:1 }[difficulty];
+  let misses = 0;
+  setLives(maxMisses, maxMisses-misses);
+
+  const cases = t('druginteract.cases');
+  const c = pick(cases);
+  const options = shuffle(c.options);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'drug-wrap';
+  wrap.innerHTML = `
+    <div class="drug-current">Patient is currently taking: <span>${c.current}</span></div>
+    <div class="drug-options" id="drugOpts"></div>
+  `;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('druginteract.hint');
+  stage.appendChild(hint);
+
+  const optsEl = wrap.querySelector('#drugOpts');
+  options.forEach(drug => {
+    const btn = document.createElement('div');
+    btn.className = 'drug-opt';
+    btn.textContent = drug;
+    btn.onclick = () => {
+      if(btn.dataset.resolved) return;
+      if(drug === c.bad){
+        finish(true,{drug, reason:c.reason});
+      } else {
+        btn.dataset.resolved = '1';
+        btn.classList.add('miss-flash');
+        flashResult(false);
+        misses++;
+        setLives(maxMisses, maxMisses-misses);
+        setTimeout(()=>btn.classList.remove('miss-flash'),300);
+        if(misses >= maxMisses) finish(false,{reason:'wrong_drug'});
+      }
+    };
+    optsEl.appendChild(btn);
+  });
+
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   14) SCENE SAFETY
+   Incident report text; click every embedded hazard word/phrase.
+   ========================================================================= */
+function buildSceneSafety(difficulty, timeLimit){
+  const hazardPool = t('scenesafety.hazards');
+  const wordBank = t('scenesafety.word_bank').split(' ');
+  const hazardCount = { easy:2, medium:3, hard:4 }[difficulty];
+  const maxMisses = { easy:5, medium:4, hard:3 }[difficulty];
+  let misses = 0, foundCount = 0;
+  setLives(maxMisses, maxMisses-misses);
+
+  const chosenHazards = shuffle(hazardPool).slice(0, hazardCount);
+  const totalWords = { easy:70, medium:90, hard:110 }[difficulty];
+  const words = Array.from({length:totalWords}, ()=>pick(wordBank));
+
+  // inject hazards as single tokens
+  const slots = shuffle(Array.from({length:totalWords},(_,i)=>i)).slice(0, hazardCount);
+  slots.forEach((slot, i)=>{ words[slot] = chosenHazards[i]; });
+
+  const wrap = document.createElement('div');
+  wrap.className = 'scene-wrap';
+  wrap.innerHTML = `<div class="scene-target">${t('scenesafety.target_label')} <span>${chosenHazards.map(h=>h.toUpperCase()).join(', ')}</span></div>
+    <div class="scene-doc" id="doc"></div>`;
+  stage.appendChild(wrap);
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('scenesafety.hint',{count:hazardCount});
+  stage.appendChild(hint);
+
+  const docEl = wrap.querySelector('#doc');
+  words.forEach((w,i)=>{
+    const span = document.createElement('span');
+    span.className = 'scene-word';
+    span.textContent = w;
+    span.dataset.isHazard = chosenHazards.includes(w) ? '1' : '0';
+    span.dataset.resolved = '0';
+    docEl.appendChild(span);
+    docEl.appendChild(document.createTextNode(' '));
+  });
+
+  docEl.addEventListener('click', e=>{
+    const span = e.target.closest('.scene-word');
+    if(!span || span.dataset.resolved === '1') return;
+    span.dataset.resolved = '1';
+    if(span.dataset.isHazard === '1'){
+      span.classList.add('found');
+      foundCount++;
+      flashResult(true);
+      if(foundCount >= hazardCount) finish(true,{found:foundCount});
+    } else {
+      span.classList.add('miss-flash');
+      flashResult(false);
+      misses++;
+      setLives(maxMisses, maxMisses-misses);
+      setTimeout(()=>span.classList.remove('miss-flash'),300);
+      if(misses >= maxMisses) finish(false,{reason:'too_many_misses'});
+    }
+  });
+
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+/* =========================================================================
+   15) SPINAL IMMOBILISATION SEQUENCE
+   Body zones briefly highlighted in order; repeat the sequence from memory.
+   ========================================================================= */
+function buildSpinalSeq(difficulty, timeLimit){
+  const seqLen = { easy:3, medium:4, hard:5 }[difficulty];
+  const previewMs = { easy:700, medium:550, hard:400 }[difficulty]; // ms each zone is lit
+  const zones = t('spinalseq.zones'); // 5 named zones
+  const sequence = Array.from({length:seqLen}, ()=>randInt(0,zones.length-1));
+  let inputIdx = 0;
+  const maxMisses = { easy:2, medium:1, hard:0 }[difficulty];
+  let misses = 0;
+  setLives(maxMisses+1, maxMisses+1-misses);
+
+  // SVG body figure divided into 5 clickable zones stacked vertically
+  const zoneH = 36, figW = 60;
+  const svgH = zones.length * zoneH;
+  const COLORS = ['#4dabf7','#51cf66','#fcc419','#f783ac','#9775fa'];
+
+  const wrap = document.createElement('div');
+  wrap.className = 'spinal-wrap';
+
+  // sequence slots display
+  const seqDisplay = document.createElement('div');
+  seqDisplay.className = 'spinal-sequence';
+  for(let i=0;i<seqLen;i++){
+    const slot = document.createElement('div');
+    slot.className = 'spinal-slot';
+    slot.textContent = i+1;
+    seqDisplay.appendChild(slot);
+  }
+  wrap.appendChild(seqDisplay);
+
+  // body SVG
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox',`0 0 ${figW} ${svgH}`);
+  svg.setAttribute('width',figW); svg.setAttribute('height',svgH);
+  svg.classList.add('spinal-svg');
+  svg.style.display = 'block';
+  svg.style.margin = '0 auto 10px';
+
+  const rects = zones.map((z,i)=>{
+    const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x',4); rect.setAttribute('y',i*zoneH+2);
+    rect.setAttribute('width',figW-8); rect.setAttribute('height',zoneH-4);
+    rect.setAttribute('rx',6);
+    rect.setAttribute('fill','#2c2e33');
+    rect.setAttribute('stroke','var(--edge)');
+    rect.dataset.zone = i;
+    rect.classList.add('spinal-zone');
+    svg.appendChild(rect);
+
+    const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+    label.setAttribute('x',figW/2); label.setAttribute('y',i*zoneH+zoneH/2+5);
+    label.setAttribute('text-anchor','middle');
+    label.setAttribute('fill','var(--muted)');
+    label.setAttribute('font-size','9');
+    label.setAttribute('font-family','Consolas,monospace');
+    label.textContent = z;
+    svg.appendChild(label);
+    return rect;
+  });
+  wrap.appendChild(svg);
+  stage.appendChild(wrap);
+
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = t('spinalseq.hint');
+  stage.appendChild(hint);
+
+  // playback animation
+  let accepting = false;
+  async function playback(){
+    accepting = false;
+    for(const zoneIdx of sequence){
+      rects[zoneIdx].setAttribute('fill', COLORS[zoneIdx]);
+      rects[zoneIdx].setAttribute('stroke', COLORS[zoneIdx]);
+      await sleep(previewMs);
+      rects[zoneIdx].setAttribute('fill','#2c2e33');
+      rects[zoneIdx].setAttribute('stroke','var(--edge)');
+      await sleep(120);
+    }
+    accepting = true;
+    hint.textContent = t('spinalseq.hint').replace('Memorize', 'Now click').replace('then click', '—');
+  }
+  playback();
+
+  svg.addEventListener('click', e=>{
+    if(!accepting) return;
+    const rect = e.target.closest('.spinal-zone');
+    if(!rect) return;
+    const clicked = Number(rect.dataset.zone);
+
+    if(clicked === sequence[inputIdx]){
+      // correct
+      rects[clicked].setAttribute('fill', COLORS[clicked]);
+      rects[clicked].setAttribute('stroke', COLORS[clicked]);
+      seqDisplay.children[inputIdx].classList.add('filled');
+      seqDisplay.children[inputIdx].textContent = zones[clicked].slice(0,3);
+      inputIdx++;
+      flashResult(true);
+      setTimeout(()=>{
+        rects[clicked].setAttribute('fill','#2c2e33');
+        rects[clicked].setAttribute('stroke','var(--edge)');
+      }, 250);
+      if(inputIdx >= seqLen){ finish(true,{sequence:sequence.map(i=>zones[i])}); }
+    } else {
+      flashResult(false);
+      misses++;
+      setLives(maxMisses+1, maxMisses+1-misses);
+      if(misses > maxMisses){ finish(false,{reason:'wrong_zone',progress:inputIdx}); return; }
+      // restart input on mistake
+      inputIdx = 0;
+      seqDisplay.querySelectorAll('.spinal-slot').forEach((s,i)=>{
+        s.classList.remove('filled'); s.textContent = i+1;
+      });
+    }
+  });
+
+  startTimer(timeLimit, ()=>finish(false,{reason:'timeout'}));
+}
+
+</script>
+
+</body>
+</html>
